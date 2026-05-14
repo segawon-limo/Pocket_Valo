@@ -1,0 +1,54 @@
+package com.pocketvalo.app.data.repository
+
+import com.pocketvalo.app.data.model.TierData
+import com.pocketvalo.app.data.model.MapData
+import com.pocketvalo.app.data.remote.api.RetrofitClient
+
+class AssetsRepository {
+
+    private val api = RetrofitClient.valorantApi
+    private var cachedTiers: Map<String, TierData> = emptyMap()
+
+    private var cachedMaps: Map<String, MapData> = emptyMap()
+
+    suspend fun getCompetitiveTiers(): Result<Map<String, TierData>> {
+        if (cachedTiers.isNotEmpty()) return Result.Success(cachedTiers)
+
+        return try {
+            val response = api.getCompetitiveTiers()
+            if (response.isSuccessful) {
+                val latestEpisode = response.body()?.data?.lastOrNull()
+                val tierMap = latestEpisode?.tiers
+                    ?.filter { it.smallIcon != null }
+                    ?.associateBy { it.tierName.uppercase() }
+                    ?: emptyMap()
+                cachedTiers = tierMap
+                Result.Success(tierMap)
+            } else {
+                Result.Error("Failed to load rank data")
+            }
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Network error")
+        }
+    }
+
+    suspend fun getMaps(): Result<Map<String, MapData>> {
+        if (cachedMaps.isNotEmpty()) return Result.Success(cachedMaps)
+
+        return try {
+            val response = api.getMaps()
+            if (response.isSuccessful) {
+                val mapData = response.body()?.data
+                    ?.associateBy { it.displayName.uppercase() }
+                    ?: emptyMap()
+                cachedMaps = mapData
+                Result.Success(cachedMaps)
+            } else {
+                Result.Error("Failed to load map data")
+            }
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Network error")
+        }
+    }
+
+}

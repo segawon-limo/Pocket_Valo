@@ -72,6 +72,7 @@ fun AppNavigation(
     val currentRoute = currentBackStack?.destination?.route
 
     Scaffold(
+        containerColor = Color(0xFF0F1923),
         bottomBar = {
             if (currentRoute in screensWithBottomNav) {
                 BottomNavigationBar(navController, currentRoute)
@@ -85,9 +86,12 @@ fun AppNavigation(
         ) {
             composable(Screen.Splash.route) { SplashScreen(navController) }
             composable(Screen.Input.route) { InputScreen(navController, playerViewModel) }
-            composable(Screen.Home.route) { HomeScreen(playerViewModel) }
+            composable(Screen.Home.route) { HomeScreen(navController, playerViewModel) }
             composable(Screen.Store.route) { StoreScreen() }
-            composable(Screen.Match.route) { MatchScreen() }
+            composable(Screen.Match.route) { backStackEntry ->
+                val matchId = backStackEntry.arguments?.getString("matchId") ?: ""
+                MatchScreen(matchId, navController, playerViewModel)
+            }
             composable(Screen.Account.route) { AccountScreen() }
             composable(Screen.Agents.route) { AgentsScreen() }
             composable(Screen.Weapons.route) { WeaponsScreen() }

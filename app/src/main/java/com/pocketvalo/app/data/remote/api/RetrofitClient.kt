@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit
 object RetrofitClient {
 
     private const val HENRIK_BASE_URL = "https://api.henrikdev.xyz/"
+    private const val VALORANT_API_BASE_URL = "https://valorant-api.com/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
@@ -27,5 +28,14 @@ object RetrofitClient {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(HenrikApiService::class.java)
+    }
+
+    val valorantApi: ValorantApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(VALORANT_API_BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(ValorantApiService::class.java)
     }
 }
