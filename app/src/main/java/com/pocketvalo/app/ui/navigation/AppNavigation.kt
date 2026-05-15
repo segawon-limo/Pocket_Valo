@@ -35,6 +35,9 @@ import com.pocketvalo.app.ui.screen.store.StoreScreen
 import com.pocketvalo.app.ui.screen.weapons.WeaponsScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pocketvalo.app.ui.viewmodel.PlayerViewModel
+import com.pocketvalo.app.ui.viewmodel.AgentsViewModel
+import com.pocketvalo.app.ui.viewmodel.WeaponsViewModel
+import com.pocketvalo.app.ui.screen.agents.AgentDetailScreen
 
 sealed class Screen(val route: String) {
     object Splash : Screen("splash")
@@ -47,6 +50,9 @@ sealed class Screen(val route: String) {
     object Account : Screen("account")
     object Agents : Screen("agents")
     object Weapons : Screen("weapons")
+    object AgentDetail : Screen("agent/{agentId}") {
+        fun createRoute(agentId: String) = "agent/$agentId"
+    }
 }
 
 data class BottomNavItem(
@@ -60,6 +66,8 @@ fun AppNavigation(
     navController: NavHostController = rememberNavController()
 ) {
     val playerViewModel: PlayerViewModel = viewModel()
+    val agentsViewModel: AgentsViewModel = viewModel()
+    val weaponsViewModel: WeaponsViewModel = viewModel()
     val screensWithBottomNav = listOf(
         Screen.Home.route,
         Screen.Store.route,
@@ -93,8 +101,12 @@ fun AppNavigation(
                 MatchScreen(matchId, navController, playerViewModel)
             }
             composable(Screen.Account.route) { AccountScreen() }
-            composable(Screen.Agents.route) { AgentsScreen() }
-            composable(Screen.Weapons.route) { WeaponsScreen() }
+            composable(Screen.Agents.route) { AgentsScreen(navController, agentsViewModel) }
+            composable(Screen.AgentDetail.route) { backStackEntry ->
+                val agentId = backStackEntry.arguments?.getString("agentId") ?: ""
+                AgentDetailScreen(agentId, navController, agentsViewModel)
+            }
+            composable(Screen.Weapons.route) { WeaponsScreen(weaponsViewModel) }
         }
     }
 }
@@ -136,3 +148,4 @@ fun BottomNavigationBar(navController: NavController, currentRoute: String?) {
         }
     }
 }
+

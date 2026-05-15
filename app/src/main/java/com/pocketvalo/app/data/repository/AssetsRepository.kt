@@ -2,14 +2,17 @@ package com.pocketvalo.app.data.repository
 
 import com.pocketvalo.app.data.model.TierData
 import com.pocketvalo.app.data.model.MapData
+import com.pocketvalo.app.data.model.AgentData
+import com.pocketvalo.app.data.model.WeaponData
 import com.pocketvalo.app.data.remote.api.RetrofitClient
 
 class AssetsRepository {
 
     private val api = RetrofitClient.valorantApi
     private var cachedTiers: Map<String, TierData> = emptyMap()
-
     private var cachedMaps: Map<String, MapData> = emptyMap()
+    private var cachedAgents: List<AgentData> = emptyList()
+    private var cachedWeapons: List<WeaponData> = emptyList()
 
     suspend fun getCompetitiveTiers(): Result<Map<String, TierData>> {
         if (cachedTiers.isNotEmpty()) return Result.Success(cachedTiers)
@@ -45,6 +48,45 @@ class AssetsRepository {
                 Result.Success(cachedMaps)
             } else {
                 Result.Error("Failed to load map data")
+            }
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Network error")
+        }
+    }
+
+    suspend fun getAgents(): Result<List<AgentData>> {
+        if (cachedAgents.isNotEmpty()) return Result.Success(cachedAgents)
+
+        return try {
+            val response = api.getAgents(isPlayableCharacter = true)
+            if (response.isSuccessful) {
+                val agents = response.body()?.data
+                    ?.filter { it.isPlayableCharacter }
+                    ?.sortedBy { it.displayName }
+                    ?: emptyList()
+                cachedAgents = agents
+                Result.Success(agents)
+            } else {
+                Result.Error("Failed to load agents")
+            }
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Network error")
+        }
+    }
+
+    suspend fun getWeapons(): Result<List<WeaponData>> {
+        if (cachedWeapons.isNotEmpty()) return Result.Success(cachedWeapons)
+
+        return try {
+            val response = api.getWeapons()
+            if (response.isSuccessful) {
+                val weapons = response.body()?.data
+                    ?.sortedBy { it.displayName }
+                    ?: emptyList()
+                cachedWeapons = weapons
+                Result.Success(weapons)
+            } else {
+                Result.Error("Failed to load weapons")
             }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
