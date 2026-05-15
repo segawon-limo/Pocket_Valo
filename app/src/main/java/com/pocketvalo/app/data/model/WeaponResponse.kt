@@ -13,7 +13,14 @@ data class WeaponData(
     @SerializedName("category") val category: String,
     @SerializedName("displayIcon") val displayIcon: String?,
     @SerializedName("killStreamIcon") val killStreamIcon: String?,
-    @SerializedName("weaponStats") val weaponStats: WeaponStats?
+    @SerializedName("weaponStats") val weaponStats: WeaponStats?,
+    @SerializedName("shopData") val shopData: ShopData?
+)
+
+data class ShopData(
+    @SerializedName("cost") val cost: Int?,
+    @SerializedName("category") val shopCategory: String?,
+    @SerializedName("categoryText") val categoryText: String?
 )
 
 data class WeaponStats(

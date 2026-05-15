@@ -77,11 +77,27 @@ class AssetsRepository {
     suspend fun getWeapons(): Result<List<WeaponData>> {
         if (cachedWeapons.isNotEmpty()) return Result.Success(cachedWeapons)
 
+        val categoryOrder = mapOf(
+            "Melee" to 0,
+            "Sidearm" to 1,
+            "SMG" to 2,
+            "Shotgun" to 3,
+            "Rifle" to 4,
+            "Sniper" to 5,
+            "Heavy" to 6
+        )
+
         return try {
             val response = api.getWeapons()
             if (response.isSuccessful) {
                 val weapons = response.body()?.data
-                    ?.sortedBy { it.displayName }
+                    ?.sortedWith(
+                        compareBy(
+                            { categoryOrder[it.category.substringAfterLast("::")] ?: 99 },
+                            { it.shopData?.cost ?: 0 },
+                            { it.displayName }
+                        )
+                    )
                     ?: emptyList()
                 cachedWeapons = weapons
                 Result.Success(weapons)

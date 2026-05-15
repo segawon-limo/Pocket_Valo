@@ -24,6 +24,8 @@ class WeaponsViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(WeaponsUiState())
     val uiState: StateFlow<WeaponsUiState> = _uiState
 
+    val categoryOrder = listOf("Melee", "Sidearm", "SMG", "Shotgun", "Rifle", "Sniper", "Heavy")
+
     init {
         loadWeapons()
     }

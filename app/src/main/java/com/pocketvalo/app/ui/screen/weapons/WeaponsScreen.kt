@@ -10,27 +10,31 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.pocketvalo.app.data.model.WeaponData
 import com.pocketvalo.app.ui.viewmodel.WeaponsViewModel
 
 @Composable
 fun WeaponsScreen(
-    weaponsViewModel: WeaponsViewModel = viewModel()
+    weaponsViewModel: WeaponsViewModel
 ) {
     val uiState by weaponsViewModel.uiState.collectAsStateWithLifecycle()
+    val categoryOrder = weaponsViewModel.categoryOrder
 
-    val categories = uiState.weapons
-        .map { it.category.substringAfterLast("::") }
-        .distinct()
-        .sorted()
+    // Build tab list: only categories that actually exist in data, in defined order
+    val availableCategories = remember(uiState.weapons) {
+        val existing = uiState.weapons
+            .map { it.category.substringAfterLast("::") }
+            .toSet()
+        categoryOrder.filter { it in existing }
+    }
 
     Column(
         modifier = Modifier
@@ -45,17 +49,18 @@ fun WeaponsScreen(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
         )
 
-        // Category filter
-        if (categories.isNotEmpty()) {
+        if (availableCategories.isNotEmpty()) {
+            val selectedIndex = if (uiState.selectedCategory == null) 0
+            else availableCategories.indexOf(uiState.selectedCategory) + 1
+
             ScrollableTabRow(
-                selectedTabIndex = categories.indexOf(
-                    uiState.selectedCategory
-                ).coerceAtLeast(0),
+                selectedTabIndex = selectedIndex.coerceAtLeast(0),
                 containerColor = Color(0xFF0F1923),
                 contentColor = Color(0xFFFF4655),
                 edgePadding = 16.dp,
                 divider = {}
             ) {
+                // "All" tab
                 Tab(
                     selected = uiState.selectedCategory == null,
                     onClick = { weaponsViewModel.filterByCategory(null) },
@@ -67,7 +72,7 @@ fun WeaponsScreen(
                         )
                     }
                 )
-                categories.forEach { category ->
+                availableCategories.forEach { category ->
                     Tab(
                         selected = uiState.selectedCategory == category,
                         onClick = { weaponsViewModel.filterByCategory(category) },
@@ -101,7 +106,7 @@ fun WeaponsScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
                     items(uiState.filteredWeapons) { weapon ->
@@ -116,67 +121,126 @@ fun WeaponsScreen(
 @Composable
 fun WeaponCard(weapon: WeaponData) {
     val category = weapon.category.substringAfterLast("::")
+    val cost = weapon.shopData?.cost
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2332)),
-        shape = RoundedCornerShape(8.dp)
+        shape = RoundedCornerShape(10.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Weapon image
+        Column(modifier = Modifier.fillMaxWidth()) {
+
+            // Weapon image area with subtle gradient overlay
             Box(
                 modifier = Modifier
-                    .width(120.dp)
-                    .height(60.dp),
+                    .fillMaxWidth()
+                    .height(100.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(Color(0xFF0F1923), Color(0xFF1A2332))
+                        )
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 if (weapon.displayIcon != null) {
                     AsyncImage(
                         model = weapon.displayIcon,
                         contentDescription = weapon.displayName,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .height(80.dp),
                         contentScale = ContentScale.Fit
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            // Divider
+            HorizontalDivider(
+                color = Color(0xFF0F1923),
+                thickness = 1.dp
+            )
 
             // Weapon info
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = weapon.displayName,
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = category,
-                    color = Color(0xFFFF4655),
-                    fontSize = 12.sp
-                )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = weapon.displayName,
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = category,
+                            color = Color(0xFFFF4655),
+                            fontSize = 12.sp
+                        )
+                    }
 
-                weapon.weaponStats?.let { stats ->
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        stats.fireRate?.let {
-                            StatChip(label = "Fire Rate", value = "${it.toInt()}/s")
-                        }
-                        stats.magazineSize?.let {
-                            StatChip(label = "Mag", value = "$it")
+                    // Credits badge
+                    if (cost != null && cost > 0) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF0F1923))
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "◈ $cost",
+                                color = Color(0xFFFFD700),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
+                }
+
+                weapon.weaponStats?.let { stats ->
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        stats.fireRate?.let {
+                            StatChip(
+                                label = "Fire Rate",
+                                value = "${it.toInt()}/s",
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        stats.magazineSize?.let {
+                            StatChip(
+                                label = "Magazine",
+                                value = "$it",
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        stats.reloadTimeSeconds?.let {
+                            StatChip(
+                                label = "Reload",
+                                value = "${String.format("%.1f", it)}s",
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
                     stats.damageRanges?.firstOrNull()?.let { range ->
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            StatChip(label = "Head", value = "${range.headDamage.toInt()}")
-                            StatChip(label = "Body", value = "${range.bodyDamage.toInt()}")
-                            StatChip(label = "Leg", value = "${range.legDamage.toInt()}")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            StatChip(label = "Head", value = "${range.headDamage.toInt()}", modifier = Modifier.weight(1f))
+                            StatChip(label = "Body", value = "${range.bodyDamage.toInt()}", modifier = Modifier.weight(1f))
+                            StatChip(label = "Leg", value = "${range.legDamage.toInt()}", modifier = Modifier.weight(1f))
                         }
                     }
                 }
@@ -186,12 +250,18 @@ fun WeaponCard(weapon: WeaponData) {
 }
 
 @Composable
-fun StatChip(label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+fun StatChip(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFF0F1923))
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Text(
             text = value,
             color = Color.White,
-            fontSize = 12.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold
         )
         Text(
