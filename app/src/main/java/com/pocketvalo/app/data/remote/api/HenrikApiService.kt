@@ -1,6 +1,7 @@
 package com.pocketvalo.app.data.remote.api
 
 import com.pocketvalo.app.data.model.AccountResponse
+import com.pocketvalo.app.data.model.MatchDetailResponse
 import com.pocketvalo.app.data.model.MatchHistoryResponse
 import retrofit2.Response
 import retrofit2.http.GET
@@ -23,4 +24,10 @@ interface HenrikApiService {
         @Path("tag") tag: String,
         @Header("Authorization") apiKey: String
     ): Response<MatchHistoryResponse>
+
+    @GET("valorant/v2/match/{matchId}")
+    suspend fun getMatchDetail(
+        @Path("matchId") matchId: String,
+        @Header("Authorization") apiKey: String
+    ): Response<MatchDetailResponse>
 }

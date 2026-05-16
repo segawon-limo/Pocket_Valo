@@ -10,26 +10,24 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.pocketvalo.app.data.model.MatchData
+import coil.compose.AsyncImage
+import com.pocketvalo.app.data.local.entity.MatchEntity
+import com.pocketvalo.app.data.model.TierData
 import com.pocketvalo.app.ui.navigation.Screen
 import com.pocketvalo.app.ui.viewmodel.PlayerViewModel
-import androidx.compose.foundation.layout.width
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
-import coil.compose.AsyncImage
-import com.pocketvalo.app.data.model.TierData
 
 @Composable
 fun HomeScreen(
     navController: NavController,
-    playerViewModel: PlayerViewModel = viewModel()
+    playerViewModel: PlayerViewModel
 ) {
     val uiState by playerViewModel.uiState.collectAsStateWithLifecycle()
 
@@ -100,11 +98,9 @@ fun HomeScreen(
                         items(uiState.matchHistory) { match ->
                             MatchCard(
                                 match = match,
-                                currentPlayerName = uiState.accountData?.name ?: "",
-                                currentPlayerTag = uiState.accountData?.tag ?: "",
                                 rankTiers = uiState.rankTiers,
                                 onClick = {
-                                    navController.navigate(Screen.Match.createRoute(match.metadata.matchId))
+                                    navController.navigate(Screen.Match.createRoute(match.matchId))
                                 }
                             )
                             Spacer(modifier = Modifier.height(8.dp))
@@ -117,66 +113,22 @@ fun HomeScreen(
 }
 
 @Composable
-fun MatchCard(match: MatchData, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2332)),
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = match.metadata.mode,
-                    color = Color(0xFFFF4655),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = match.metadata.gameStartPatched,
-                    color = Color(0xFF9BA3AF),
-                    fontSize = 12.sp
-                )
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = match.metadata.map,
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
-    }
-}
-
-@Composable
 fun MatchCard(
-    match: MatchData,
-    currentPlayerName: String,
-    currentPlayerTag: String,
+    match: MatchEntity,
     rankTiers: Map<String, TierData>,
     onClick: () -> Unit
 ) {
-    val currentPlayer = match.players?.allPlayers?.find {
-        it.name.equals(currentPlayerName, ignoreCase = true) &&
-                it.tag.equals(currentPlayerTag, ignoreCase = true)
-    }
-
-    val myTeam = currentPlayer?.team
-    val teamData = if (myTeam == "Red") match.teams?.red else match.teams?.blue
-    val isVictory = teamData?.hasWon ?: false
-    val roundsWon = teamData?.roundsWon ?: 0
-    val roundsLost = teamData?.roundsLost ?: 0
-
+    val isVictory = match.hasWon
     val cardColor = if (isVictory) Color(0xFF1A3A2A) else Color(0xFF3A1A1A)
     val resultColor = if (isVictory) Color(0xFF4ADE80) else Color(0xFFFF4655)
     val resultText = if (isVictory) "VICTORY" else "DEFEAT"
 
-    val rankKey = currentPlayer?.rankName?.uppercase()
+    val roundsWon = if (match.playerTeam.equals("Red", ignoreCase = true))
+        match.redRoundsWon else match.blueRoundsWon
+    val roundsLost = if (match.playerTeam.equals("Red", ignoreCase = true))
+        match.blueRoundsWon else match.redRoundsWon
+
+    val rankKey = match.rankName?.uppercase()
     val rankTier = rankTiers[rankKey]
 
     Card(
@@ -194,11 +146,10 @@ fun MatchCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Agent portrait
-            val agentImageUrl = currentPlayer?.assets?.agent?.small
-            if (agentImageUrl != null) {
+            if (match.agentPortraitUrl != null) {
                 AsyncImage(
-                    model = agentImageUrl,
-                    contentDescription = currentPlayer.character,
+                    model = match.agentPortraitUrl,
+                    contentDescription = match.agentName,
                     modifier = Modifier
                         .size(56.dp)
                         .clip(RoundedCornerShape(4.dp)),
@@ -213,7 +164,7 @@ fun MatchCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = currentPlayer?.character?.firstOrNull()?.toString() ?: "?",
+                        text = match.agentName.firstOrNull()?.toString() ?: "?",
                         color = Color.White,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
@@ -223,7 +174,7 @@ fun MatchCard(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Rank icon kolom tersendiri
+            // Rank icon
             Box(
                 modifier = Modifier.size(36.dp),
                 contentAlignment = Alignment.Center
@@ -242,20 +193,18 @@ fun MatchCard(
             // KDA + info
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = currentPlayer?.let {
-                        "KDA ${it.stats?.kills ?: 0} / ${it.stats?.deaths ?: 0} / ${it.stats?.assists ?: 0}"
-                    } ?: "KDA - / - / -",
+                    text = "KDA ${match.kills} / ${match.deaths} / ${match.assists}",
                     color = Color.White,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "SCORE ${currentPlayer?.stats?.score ?: 0}",
+                    text = "SCORE ${match.score}",
                     color = Color(0xFF9BA3AF),
                     fontSize = 12.sp
                 )
                 Text(
-                    text = "${match.metadata.mode} · ${match.metadata.map}",
+                    text = "${match.mode} · ${match.map}",
                     color = Color(0xFF9BA3AF),
                     fontSize = 11.sp
                 )

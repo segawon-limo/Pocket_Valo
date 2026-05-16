@@ -1,66 +1,82 @@
-
-
-
 package com.pocketvalo.app.ui.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.pocketvalo.app.BuildConfig
+import com.pocketvalo.app.data.local.entity.AccountEntity
+import com.pocketvalo.app.data.local.entity.MatchEntity
 import com.pocketvalo.app.data.model.AccountData
-import com.pocketvalo.app.data.model.MatchData
-import com.pocketvalo.app.data.model.TierData
 import com.pocketvalo.app.data.model.MapData
+import com.pocketvalo.app.data.model.TierData
 import com.pocketvalo.app.data.repository.AssetsRepository
 import com.pocketvalo.app.data.repository.PlayerRepository
 import com.pocketvalo.app.data.repository.Result
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import com.pocketvalo.app.BuildConfig
-// Ganti dengan API key Henrik-3 kamu
-//private const val API_KEY = "HDEV-your-api-key-here"
-val API_KEY = BuildConfig.HENRIK_API_KEY
 
-//private const val API_KEY = "HDEV-your-api-key-here"
+val API_KEY = BuildConfig.HENRIK_API_KEY
 
 data class PlayerUiState(
     val isLoading: Boolean = false,
     val accountData: AccountData? = null,
-    val matchHistory: List<MatchData> = emptyList(),
+    val matchHistory: List<MatchEntity> = emptyList(),
+    val rawMatchHistory: List<com.pocketvalo.app.data.model.MatchData> = emptyList(), // for MatchScreen scoreboard
+    val selectedMatch: com.pocketvalo.app.data.model.MatchData? = null,
+    val matchDetail: com.pocketvalo.app.data.model.MatchDetailData? = null,
+    val isLoadingDetail: Boolean = false,
     val rankTiers: Map<String, TierData> = emptyMap(),
     val maps: Map<String, MapData> = emptyMap(),
+    val savedAccounts: List<AccountEntity> = emptyList(),
     val error: String? = null
 )
 
-class PlayerViewModel : ViewModel() {
+class PlayerViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository by lazy { PlayerRepository() }
-    private val assetsRepository by lazy { AssetsRepository() }
+    private val repository = PlayerRepository(application)
+    private val assetsRepository = AssetsRepository()
 
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState
 
+    // Currently active Riot ID — used to observe correct match history flow
+    private var activeRiotId: String? = null
+
     init {
-        loadRankTiers()
+        loadAssets()
+        observeSavedAccounts()
     }
 
-    private fun loadRankTiers() {
+    private fun observeSavedAccounts() {
         viewModelScope.launch {
-            when (val result = assetsRepository.getCompetitiveTiers()) {
-                is Result.Success -> {
-                    _uiState.value = _uiState.value.copy(rankTiers = result.data)
-                }
-                else -> Unit
+            repository.getSavedAccounts().collect { accounts ->
+                _uiState.value = _uiState.value.copy(savedAccounts = accounts)
+            }
+        }
+    }
+
+    private fun observeMatchHistory(riotId: String) {
+        if (activeRiotId == riotId) return     // already observing
+        activeRiotId = riotId
+        viewModelScope.launch {
+            repository.getCachedMatchHistory(riotId).collect { matches ->
+                _uiState.value = _uiState.value.copy(matchHistory = matches)
             }
         }
     }
 
     fun loadPlayerData(name: String, tag: String) {
+        val riotId = "$name#$tag"
         viewModelScope.launch {
-            _uiState.value = PlayerUiState(
+            _uiState.value = _uiState.value.copy(
                 isLoading = true,
+                error = null,
                 rankTiers = _uiState.value.rankTiers,
                 maps = _uiState.value.maps
             )
+
+            // Start observing cache immediately — UI shows stale data while refreshing
+            observeMatchHistory(riotId)
 
             when (val result = repository.getAccount(name, tag, API_KEY)) {
                 is Result.Success -> {
@@ -70,7 +86,7 @@ class PlayerViewModel : ViewModel() {
                         accountData = accountData
                     )
                     accountData?.region?.let { region ->
-                        loadMatchHistory(region, name, tag)
+                        refreshMatchHistory(region, name, tag)
                     }
                 }
                 is Result.Error -> {
@@ -84,24 +100,29 @@ class PlayerViewModel : ViewModel() {
         }
     }
 
-    private fun loadMatchHistory(region: String, name: String, tag: String) {
+    private fun refreshMatchHistory(region: String, name: String, tag: String) {
         viewModelScope.launch {
-            when (val result = repository.getMatchHistory(region, name, tag, API_KEY)) {
-                is Result.Success -> {
-                    _uiState.value = _uiState.value.copy(
-                        matchHistory = result.data.data ?: emptyList()
-                    )
-                }
-                is Result.Error -> {
-                    _uiState.value = _uiState.value.copy(error = result.message)
-                }
-                else -> Unit
+            val result = repository.refreshMatchHistory(region, name, tag, API_KEY)
+            if (result is Result.Success) {
+                // Also keep raw data in-memory for MatchScreen scoreboard this session
+                _uiState.value = _uiState.value.copy(
+                    rawMatchHistory = result.data.data ?: emptyList()
+                )
             }
         }
     }
 
-    init {
-        loadAssets()
+    fun deleteAccount(riotId: String) {
+        viewModelScope.launch {
+            repository.deleteAccount(riotId)
+            if (activeRiotId == riotId) {
+                activeRiotId = null
+                _uiState.value = _uiState.value.copy(
+                    accountData = null,
+                    matchHistory = emptyList()
+                )
+            }
+        }
     }
 
     private fun loadAssets() {
@@ -114,6 +135,30 @@ class PlayerViewModel : ViewModel() {
         viewModelScope.launch {
             when (val result = assetsRepository.getMaps()) {
                 is Result.Success -> _uiState.value = _uiState.value.copy(maps = result.data)
+                else -> Unit
+            }
+        }
+    }
+
+    fun loadMatchDetail(matchId: String) {
+        // Skip if already loaded for this match
+        if (_uiState.value.matchDetail?.metadata?.matchId == matchId) return
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                isLoadingDetail = true,
+                matchDetail = null
+            )
+            when (val result = repository.getMatchDetail(matchId, API_KEY)) {
+                is Result.Success -> {
+                    _uiState.value = _uiState.value.copy(
+                        isLoadingDetail = false,
+                        matchDetail = result.data.data
+                    )
+                }
+                is Result.Error -> {
+                    _uiState.value = _uiState.value.copy(isLoadingDetail = false)
+                }
                 else -> Unit
             }
         }
