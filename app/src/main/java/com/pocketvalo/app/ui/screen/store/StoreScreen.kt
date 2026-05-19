@@ -19,6 +19,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import com.pocketvalo.app.ui.viewmodel.StoreUiState
 import com.pocketvalo.app.ui.viewmodel.StoreViewModel
@@ -31,7 +32,6 @@ fun StoreScreen(
     val uiState by storeViewModel.uiState.collectAsState()
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // ── Main store content ────────────────────────────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -44,6 +44,7 @@ fun StoreScreen(
                 )
                 uiState.store != null -> StoreContent(
                     uiState = uiState,
+                    storeViewModel = storeViewModel,
                     onRefresh = { storeViewModel.loadStore(forceRefresh = true) },
                     onLogout = { storeViewModel.logout() }
                 )
@@ -54,7 +55,6 @@ fun StoreScreen(
             }
         }
 
-        // ── WebView overlay for Riot login ────────────────────────────────────
         if (uiState.showAuthWebView && uiState.authUrl != null) {
             RiotAuthWebView(
                 authUrl = uiState.authUrl!!,
@@ -119,6 +119,7 @@ private fun LoginPrompt(onLoginClick: () -> Unit) {
 @Composable
 private fun StoreContent(
     uiState: StoreUiState,
+    storeViewModel: StoreViewModel,
     onRefresh: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -180,7 +181,7 @@ private fun StoreContent(
         }
 
         items(store.skinUuids) { skinUuid ->
-            SkinOfferCard(skinUuid = skinUuid)
+            SkinOfferCard(skinUuid = skinUuid, storeViewModel = storeViewModel)
         }
 
         item {
@@ -196,8 +197,19 @@ private fun StoreContent(
 }
 
 @Composable
-private fun SkinOfferCard(skinUuid: String) {
-    val imageUrl = "https://media.valorant-api.com/weaponskinlevels/$skinUuid/displayicon.png"
+private fun SkinOfferCard(skinUuid: String, storeViewModel: StoreViewModel) {
+    var skinName by remember { mutableStateOf("") }
+    var iconUrl by remember {
+        mutableStateOf("https://media.valorant-api.com/weaponskinlevels/$skinUuid/displayicon.png")
+    }
+
+    LaunchedEffect(skinUuid) {
+        val info = storeViewModel.getSkinInfo(skinUuid)
+        if (info != null) {
+            skinName = info.displayName
+            if (info.displayIcon != null) iconUrl = info.displayIcon
+        }
+    }
 
     Card(
         modifier = Modifier
@@ -213,7 +225,7 @@ private fun SkinOfferCard(skinUuid: String) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             AsyncImage(
-                model = imageUrl,
+                model = iconUrl,
                 contentDescription = null,
                 modifier = Modifier
                     .size(96.dp)
@@ -221,20 +233,12 @@ private fun SkinOfferCard(skinUuid: String) {
                 contentScale = ContentScale.Fit
             )
             Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(
-                    text = "Loading...",
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = skinUuid.take(8) + "...",
-                    color = Color(0xFF6B7280),
-                    fontSize = 11.sp
-                )
-            }
+            Text(
+                text = skinName.ifEmpty { skinUuid.take(8) + "..." },
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
 }

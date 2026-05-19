@@ -14,7 +14,29 @@ data class WeaponData(
     @SerializedName("displayIcon") val displayIcon: String?,
     @SerializedName("killStreamIcon") val killStreamIcon: String?,
     @SerializedName("weaponStats") val weaponStats: WeaponStats?,
-    @SerializedName("shopData") val shopData: ShopData?
+    @SerializedName("shopData") val shopData: ShopData?,
+    @SerializedName("skins") val skins: List<SkinData> = emptyList()
+)
+
+data class SkinData(
+    @SerializedName("uuid") val uuid: String,
+    @SerializedName("displayName") val displayName: String,
+    @SerializedName("contentTierUuid") val contentTierUuid: String?,
+    @SerializedName("displayIcon") val displayIcon: String?,
+    @SerializedName("levels") val levels: List<SkinLevelData> = emptyList(),
+    @SerializedName("chromas") val chromas: List<SkinChromaData> = emptyList()
+)
+
+data class SkinLevelData(
+    @SerializedName("uuid") val uuid: String,
+    @SerializedName("displayName") val displayName: String?,
+    @SerializedName("displayIcon") val displayIcon: String?
+)
+
+data class SkinChromaData(
+    @SerializedName("uuid") val uuid: String,
+    @SerializedName("displayName") val displayName: String?,
+    @SerializedName("fullRender") val fullRender: String?
 )
 
 data class ShopData(

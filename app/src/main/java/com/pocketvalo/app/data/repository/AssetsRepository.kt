@@ -74,6 +74,50 @@ class AssetsRepository {
         }
     }
 
+    // Cache for store skin lookup: levelUuid → StoreSkinInfo
+    private var skinLevelCache: Map<String, StoreSkinInfo> = emptyMap()
+
+    data class StoreSkinInfo(
+        val displayName: String,
+        val tierUuid: String?,
+        val displayIcon: String?,
+        val cost: Int
+    )
+
+    suspend fun getSkinByLevelUuid(levelUuid: String): StoreSkinInfo? {
+        // Build cache from weapons data if not built yet
+        if (skinLevelCache.isEmpty()) {
+            buildSkinLevelCache()
+        }
+        return skinLevelCache[levelUuid]
+    }
+
+    private suspend fun buildSkinLevelCache() {
+        try {
+            val response = RetrofitClient.valorantApi.getWeapons()
+            if (!response.isSuccessful) return
+
+            val cache = mutableMapOf<String, StoreSkinInfo>()
+            response.body()?.data?.forEach { weapon ->
+                weapon.skins.forEach { skin ->
+                    val levelOneUuid = skin.levels.firstOrNull()?.uuid ?: return@forEach
+
+                    // Find best icon: first level with displayIcon
+                    val icon = skin.levels.firstOrNull { it.displayIcon != null }?.displayIcon
+                        ?: skin.chromas.firstOrNull()?.fullRender
+
+                    cache[levelOneUuid] = StoreSkinInfo(
+                        displayName = skin.displayName,
+                        tierUuid = skin.contentTierUuid,
+                        displayIcon = icon,
+                        cost = weapon.shopData?.cost ?: 0
+                    )
+                }
+            }
+            skinLevelCache = cache
+        } catch (_: Exception) {}
+    }
+
     suspend fun getWeapons(): Result<List<WeaponData>> {
         if (cachedWeapons.isNotEmpty()) return Result.Success(cachedWeapons)
 
@@ -108,5 +152,4 @@ class AssetsRepository {
             Result.Error(e.message ?: "Network error")
         }
     }
-
 }

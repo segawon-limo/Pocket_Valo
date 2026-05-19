@@ -209,7 +209,7 @@ class RiotAuthRepository(
         return try {
             val response = client.newCall(request).execute()
             val body = response.body?.string() ?: return null
-            android.util.Log.d("RiotAuth", "${request.url} -> ${response.code}: ${body.take(200)}")
+            android.util.Log.d("RiotAuth", "${request.url} -> ${response.code}: ${body.take(2000)}")
             if (!response.isSuccessful) return null
             gson.fromJson(body, T::class.java)
         } catch (e: Exception) {

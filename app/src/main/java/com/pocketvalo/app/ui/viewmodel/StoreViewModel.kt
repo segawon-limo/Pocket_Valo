@@ -5,13 +5,16 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.pocketvalo.app.data.local.AppDatabase
 import com.pocketvalo.app.data.local.TokenStorage
+import com.pocketvalo.app.data.repository.AssetsRepository
 import com.pocketvalo.app.data.repository.AuthResult
 import com.pocketvalo.app.data.repository.RiotAuthRepository
 import com.pocketvalo.app.data.repository.StoreData
 import com.pocketvalo.app.data.repository.StoreRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class StoreUiState(
     val isLoading: Boolean = false,
@@ -27,6 +30,7 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
 
     private val tokenStorage = TokenStorage(application)
     private val authRepository = RiotAuthRepository(tokenStorage)
+    private val assetsRepository = AssetsRepository()
     private val storeRepository = StoreRepository(
         tokenStorage = tokenStorage,
         authRepository = authRepository,
@@ -135,5 +139,11 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    suspend fun getSkinInfo(levelUuid: String): AssetsRepository.StoreSkinInfo? {
+        return withContext(Dispatchers.IO) {
+            assetsRepository.getSkinByLevelUuid(levelUuid)
+        }
     }
 }
