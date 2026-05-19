@@ -43,7 +43,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var activeRiotId: String? = null
 
     init {
-        loadAssets()
         observeSavedAccounts()
     }
 
@@ -85,6 +84,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                         isLoading = false,
                         accountData = accountData
                     )
+                    // Load map/rank assets now that user has logged in
+                    loadAssetsIfNeeded()
                     accountData?.region?.let { region ->
                         refreshMatchHistory(region, name, tag)
                     }
@@ -125,7 +126,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun loadAssets() {
+    private fun loadAssetsIfNeeded() {
+        if (_uiState.value.rankTiers.isNotEmpty() && _uiState.value.maps.isNotEmpty()) return
         viewModelScope.launch {
             when (val result = assetsRepository.getCompetitiveTiers()) {
                 is Result.Success -> _uiState.value = _uiState.value.copy(rankTiers = result.data)

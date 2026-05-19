@@ -25,6 +25,11 @@ class AgentsViewModel : ViewModel() {
     val uiState: StateFlow<AgentsUiState> = _uiState
 
     init {
+        loadAgentsIfNeeded()
+    }
+
+    fun loadAgentsIfNeeded() {
+        if (_uiState.value.agents.isNotEmpty() || _uiState.value.isLoading) return
         loadAgents()
     }
 

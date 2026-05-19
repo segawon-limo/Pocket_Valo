@@ -29,6 +29,7 @@ fun SplashScreen(navController: NavController) {
 
     var cardImageUrl by remember { mutableStateOf<String?>(null) }
     var imageAlpha by remember { mutableStateOf(0f) }
+    var imageReady by remember { mutableStateOf(false) }
 
     // Animated shimmer gradient
     val shimmerTransition = rememberInfiniteTransition(label = "shimmer")
@@ -48,8 +49,17 @@ fun SplashScreen(navController: NavController) {
         label = "image_fade"
     )
 
+    // Navigate 1500ms after image loads successfully
+    LaunchedEffect(imageReady) {
+        if (!imageReady) return@LaunchedEffect
+        delay(1500L)
+        navController.navigate(Screen.Input.route) {
+            popUpTo(Screen.Splash.route) { inclusive = true }
+        }
+    }
+
+    // Set URL, then fallback navigate after 4s if image never loads
     LaunchedEffect(Unit) {
-        // Read UUIDs from raw file and pick random
         try {
             val uuids = context.resources.openRawResource(R.raw.player_card_uuids)
                 .bufferedReader()
@@ -58,12 +68,12 @@ fun SplashScreen(navController: NavController) {
                 .filter { it.isNotEmpty() && !it.startsWith("#") }
 
             if (uuids.isNotEmpty()) {
-                val randomUuid = uuids.random()
-                cardImageUrl = "https://media.valorant-api.com/playercards/$randomUuid/largeart.png"
+                cardImageUrl = "https://media.valorant-api.com/playercards/${uuids.random()}/largeart.png"
             }
         } catch (_: Exception) { }
 
-        delay(2200L)
+        // Fallback: navigate even if image fails or is too slow
+        delay(4000L)
         navController.navigate(Screen.Input.route) {
             popUpTo(Screen.Splash.route) { inclusive = true }
         }
@@ -102,7 +112,10 @@ fun SplashScreen(navController: NavController) {
                     .fillMaxSize()
                     .alpha(imageAlphaAnim),
                 contentScale = ContentScale.Crop,
-                onSuccess = { imageAlpha = 1f }
+                onSuccess = {
+                    imageAlpha = 1f
+                    imageReady = true
+                }
             )
         }
 

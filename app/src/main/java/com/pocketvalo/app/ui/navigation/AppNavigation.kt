@@ -15,6 +15,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -32,7 +33,9 @@ import com.pocketvalo.app.ui.screen.input.InputScreen
 import com.pocketvalo.app.ui.screen.match.MatchScreen
 import com.pocketvalo.app.ui.screen.splash.SplashScreen
 import com.pocketvalo.app.ui.screen.store.StoreScreen
+import com.pocketvalo.app.ui.screen.store.StoreScreen
 import com.pocketvalo.app.ui.screen.weapons.WeaponsScreen
+import com.pocketvalo.app.ui.viewmodel.StoreViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pocketvalo.app.ui.viewmodel.PlayerViewModel
 import com.pocketvalo.app.ui.viewmodel.AgentsViewModel
@@ -63,11 +66,10 @@ data class BottomNavItem(
 
 @Composable
 fun AppNavigation(
-    navController: NavHostController = rememberNavController()
+    navController: NavHostController = rememberNavController(),
+    storeViewModel: StoreViewModel? = null
 ) {
     val playerViewModel: PlayerViewModel = viewModel()
-    val agentsViewModel: AgentsViewModel = viewModel()
-    val weaponsViewModel: WeaponsViewModel = viewModel()
     val screensWithBottomNav = listOf(
         Screen.Home.route,
         Screen.Store.route,
@@ -101,12 +103,27 @@ fun AppNavigation(
                 MatchScreen(matchId, navController, playerViewModel)
             }
             composable(Screen.Account.route) { AccountScreen() }
-            composable(Screen.Agents.route) { AgentsScreen(navController, agentsViewModel) }
+            composable(Screen.Agents.route) { backStackEntry ->
+                val agentsViewModel: AgentsViewModel = viewModel(backStackEntry)
+                AgentsScreen(navController, agentsViewModel)
+            }
             composable(Screen.AgentDetail.route) { backStackEntry ->
                 val agentId = backStackEntry.arguments?.getString("agentId") ?: ""
+                // Reuse the same AgentsViewModel instance from the Agents screen
+                val agentsEntry = remember(backStackEntry) {
+                    navController.getBackStackEntry(Screen.Agents.route)
+                }
+                val agentsViewModel: AgentsViewModel = viewModel(agentsEntry)
                 AgentDetailScreen(agentId, navController, agentsViewModel)
             }
-            composable(Screen.Weapons.route) { WeaponsScreen(weaponsViewModel) }
+            composable(Screen.Weapons.route) {
+                val weaponsViewModel: WeaponsViewModel = viewModel()
+                WeaponsScreen(weaponsViewModel)
+            }
+            composable(Screen.Store.route) {
+                val vm = storeViewModel ?: viewModel()
+                StoreScreen(storeViewModel = vm)
+            }
         }
     }
 }
@@ -148,4 +165,3 @@ fun BottomNavigationBar(navController: NavController, currentRoute: String?) {
         }
     }
 }
-

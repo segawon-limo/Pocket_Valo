@@ -27,6 +27,11 @@ class WeaponsViewModel : ViewModel() {
     val categoryOrder = listOf("Melee", "Sidearm", "SMG", "Shotgun", "Rifle", "Sniper", "Heavy")
 
     init {
+        loadWeaponsIfNeeded()
+    }
+
+    fun loadWeaponsIfNeeded() {
+        if (_uiState.value.weapons.isNotEmpty() || _uiState.value.isLoading) return
         loadWeapons()
     }
 

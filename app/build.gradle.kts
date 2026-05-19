@@ -79,6 +79,8 @@ dependencies {
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.androidx.compose.material.icons)
     implementation(libs.coil)
+    implementation(libs.androidx.browser)
+    implementation(libs.androidx.security.crypto)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)

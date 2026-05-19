@@ -6,18 +6,21 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.pocketvalo.app.data.local.dao.AccountDao
 import com.pocketvalo.app.data.local.dao.MatchDao
+import com.pocketvalo.app.data.local.dao.StoreDao
 import com.pocketvalo.app.data.local.entity.AccountEntity
 import com.pocketvalo.app.data.local.entity.MatchEntity
+import com.pocketvalo.app.data.local.entity.StoreEntity
 
 @Database(
-    entities = [AccountEntity::class, MatchEntity::class],
-    version = 2,
+    entities = [AccountEntity::class, MatchEntity::class, StoreEntity::class],
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun accountDao(): AccountDao
     abstract fun matchDao(): MatchDao
+    abstract fun storeDao(): StoreDao
 
     companion object {
         @Volatile
