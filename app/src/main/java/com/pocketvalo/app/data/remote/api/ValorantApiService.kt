@@ -1,12 +1,15 @@
 package com.pocketvalo.app.data.remote.api
 
-import com.pocketvalo.app.data.model.CompetitiveTierResponse
-import com.pocketvalo.app.data.model.MapResponse
 import com.pocketvalo.app.data.model.AgentResponse
+import com.pocketvalo.app.data.model.CompetitiveTierResponse
+import com.pocketvalo.app.data.model.LevelBorderResponse
+import com.pocketvalo.app.data.model.MapResponse
 import com.pocketvalo.app.data.model.PlayerCardResponse
+import com.pocketvalo.app.data.model.PlayerTitleResponse
 import com.pocketvalo.app.data.model.WeaponResponse
 import retrofit2.Response
 import retrofit2.http.GET
+import retrofit2.http.Path
 
 interface ValorantApiService {
 
@@ -26,4 +29,12 @@ interface ValorantApiService {
 
     @GET("v1/playercards")
     suspend fun getPlayerCards(): Response<PlayerCardResponse>
+
+    @GET("v1/playertitles/{uuid}")
+    suspend fun getPlayerTitle(
+        @Path("uuid") uuid: String
+    ): Response<PlayerTitleResponse>
+
+    @GET("v1/levelborders")
+    suspend fun getLevelBorders(): Response<LevelBorderResponse>
 }

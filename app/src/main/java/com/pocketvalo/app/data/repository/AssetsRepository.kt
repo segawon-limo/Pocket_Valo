@@ -1,5 +1,6 @@
 package com.pocketvalo.app.data.repository
 
+import com.pocketvalo.app.data.model.LevelBorderData
 import com.pocketvalo.app.data.model.TierData
 import com.pocketvalo.app.data.model.MapData
 import com.pocketvalo.app.data.model.AgentData
@@ -13,10 +14,11 @@ class AssetsRepository {
     private var cachedMaps: Map<String, MapData> = emptyMap()
     private var cachedAgents: List<AgentData> = emptyList()
     private var cachedWeapons: List<WeaponData> = emptyList()
+    // Level borders sorted ascending by startingLevel
+    private var cachedLevelBorders: List<LevelBorderData> = emptyList()
 
     suspend fun getCompetitiveTiers(): Result<Map<String, TierData>> {
         if (cachedTiers.isNotEmpty()) return Result.Success(cachedTiers)
-
         return try {
             val response = api.getCompetitiveTiers()
             if (response.isSuccessful) {
@@ -27,9 +29,7 @@ class AssetsRepository {
                     ?: emptyMap()
                 cachedTiers = tierMap
                 Result.Success(tierMap)
-            } else {
-                Result.Error("Failed to load rank data")
-            }
+            } else Result.Error("Failed to load rank data")
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }
@@ -37,7 +37,6 @@ class AssetsRepository {
 
     suspend fun getMaps(): Result<Map<String, MapData>> {
         if (cachedMaps.isNotEmpty()) return Result.Success(cachedMaps)
-
         return try {
             val response = api.getMaps()
             if (response.isSuccessful) {
@@ -46,9 +45,7 @@ class AssetsRepository {
                     ?: emptyMap()
                 cachedMaps = mapData
                 Result.Success(cachedMaps)
-            } else {
-                Result.Error("Failed to load map data")
-            }
+            } else Result.Error("Failed to load map data")
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }
@@ -56,7 +53,6 @@ class AssetsRepository {
 
     suspend fun getAgents(): Result<List<AgentData>> {
         if (cachedAgents.isNotEmpty()) return Result.Success(cachedAgents)
-
         return try {
             val response = api.getAgents(isPlayableCharacter = true)
             if (response.isSuccessful) {
@@ -66,33 +62,55 @@ class AssetsRepository {
                     ?: emptyList()
                 cachedAgents = agents
                 Result.Success(agents)
-            } else {
-                Result.Error("Failed to load agents")
-            }
+            } else Result.Error("Failed to load agents")
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }
     }
 
-    // Cache for store skin lookup: levelUuid → StoreSkinInfo
+    // ── Level borders ─────────────────────────────────────────────────────────
+
+    suspend fun getLevelBorderForLevel(accountLevel: Int): LevelBorderData? {
+        if (cachedLevelBorders.isEmpty()) {
+            try {
+                val response = api.getLevelBorders()
+                if (response.isSuccessful) {
+                    cachedLevelBorders = response.body()?.data
+                        ?.sortedBy { it.startingLevel }
+                        ?: emptyList()
+                }
+            } catch (_: Exception) {
+                return null
+            }
+        }
+        // Cari border dengan startingLevel tertinggi yang masih <= accountLevel
+        return cachedLevelBorders
+            .filter { it.startingLevel <= accountLevel }
+            .maxByOrNull { it.startingLevel }
+    }
+
+    // ── Skin level cache ──────────────────────────────────────────────────────
+
+    @Volatile private var isBuildingCache = false
     private var skinLevelCache: Map<String, StoreSkinInfo> = emptyMap()
 
     data class StoreSkinInfo(
         val displayName: String,
         val tierUuid: String?,
         val displayIcon: String?,
-        val cost: Int
+        val cost: Int,
+        val videoUrl: String?
     )
 
     suspend fun getSkinByLevelUuid(levelUuid: String): StoreSkinInfo? {
-        // Build cache from weapons data if not built yet
-        if (skinLevelCache.isEmpty()) {
+        if (skinLevelCache.isEmpty() && !isBuildingCache) {
             buildSkinLevelCache()
         }
         return skinLevelCache[levelUuid]
     }
 
     private suspend fun buildSkinLevelCache() {
+        isBuildingCache = true
         try {
             val response = RetrofitClient.valorantApi.getWeapons()
             if (!response.isSuccessful) return
@@ -101,34 +119,32 @@ class AssetsRepository {
             response.body()?.data?.forEach { weapon ->
                 weapon.skins.forEach { skin ->
                     val levelOneUuid = skin.levels.firstOrNull()?.uuid ?: return@forEach
-
-                    // Find best icon: first level with displayIcon
                     val icon = skin.levels.firstOrNull { it.displayIcon != null }?.displayIcon
                         ?: skin.chromas.firstOrNull()?.fullRender
+                    val videoUrl = skin.levels.lastOrNull { it.streamedVideo != null }?.streamedVideo
 
                     cache[levelOneUuid] = StoreSkinInfo(
                         displayName = skin.displayName,
-                        tierUuid = skin.contentTierUuid,
+                        tierUuid    = skin.contentTierUuid,
                         displayIcon = icon,
-                        cost = weapon.shopData?.cost ?: 0
+                        cost        = weapon.shopData?.cost ?: 0,
+                        videoUrl    = videoUrl
                     )
                 }
             }
             skinLevelCache = cache
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        } finally {
+            isBuildingCache = false
+        }
     }
 
     suspend fun getWeapons(): Result<List<WeaponData>> {
         if (cachedWeapons.isNotEmpty()) return Result.Success(cachedWeapons)
 
         val categoryOrder = mapOf(
-            "Melee" to 0,
-            "Sidearm" to 1,
-            "SMG" to 2,
-            "Shotgun" to 3,
-            "Rifle" to 4,
-            "Sniper" to 5,
-            "Heavy" to 6
+            "Melee"   to 0, "Sidearm" to 1, "SMG"    to 2,
+            "Shotgun" to 3, "Rifle"   to 4, "Sniper" to 5, "Heavy" to 6
         )
 
         return try {
@@ -145,9 +161,7 @@ class AssetsRepository {
                     ?: emptyList()
                 cachedWeapons = weapons
                 Result.Success(weapons)
-            } else {
-                Result.Error("Failed to load weapons")
-            }
+            } else Result.Error("Failed to load weapons")
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }

@@ -84,4 +84,7 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+    // ExoPlayer (Media3)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
 }

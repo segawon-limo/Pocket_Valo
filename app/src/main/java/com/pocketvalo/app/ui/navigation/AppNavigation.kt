@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -27,32 +28,30 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.pocketvalo.app.ui.screen.account.AccountScreen
+import com.pocketvalo.app.ui.screen.agents.AgentDetailScreen
 import com.pocketvalo.app.ui.screen.agents.AgentsScreen
 import com.pocketvalo.app.ui.screen.home.HomeScreen
 import com.pocketvalo.app.ui.screen.input.InputScreen
 import com.pocketvalo.app.ui.screen.match.MatchScreen
 import com.pocketvalo.app.ui.screen.splash.SplashScreen
 import com.pocketvalo.app.ui.screen.store.StoreScreen
-import com.pocketvalo.app.ui.screen.store.StoreScreen
 import com.pocketvalo.app.ui.screen.weapons.WeaponsScreen
-import com.pocketvalo.app.ui.viewmodel.StoreViewModel
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.pocketvalo.app.ui.viewmodel.PlayerViewModel
 import com.pocketvalo.app.ui.viewmodel.AgentsViewModel
+import com.pocketvalo.app.ui.viewmodel.PlayerViewModel
+import com.pocketvalo.app.ui.viewmodel.StoreViewModel
 import com.pocketvalo.app.ui.viewmodel.WeaponsViewModel
-import com.pocketvalo.app.ui.screen.agents.AgentDetailScreen
 
 sealed class Screen(val route: String) {
-    object Splash : Screen("splash")
-    object Input : Screen("input")
-    object Home : Screen("home")
-    object Store : Screen("store")
-    object Match : Screen("match/{matchId}") {
+    object Splash     : Screen("splash")
+    object Input      : Screen("input")
+    object Home       : Screen("home")
+    object Store      : Screen("store")
+    object Match      : Screen("match/{matchId}") {
         fun createRoute(matchId: String) = "match/$matchId"
     }
-    object Account : Screen("account")
-    object Agents : Screen("agents")
-    object Weapons : Screen("weapons")
+    object Account    : Screen("account")
+    object Agents     : Screen("agents")
+    object Weapons    : Screen("weapons")
     object AgentDetail : Screen("agent/{agentId}") {
         fun createRoute(agentId: String) = "agent/$agentId"
     }
@@ -66,10 +65,11 @@ data class BottomNavItem(
 
 @Composable
 fun AppNavigation(
-    navController: NavHostController = rememberNavController(),
-    storeViewModel: StoreViewModel? = null
+    navController: NavHostController = rememberNavController()
 ) {
+    // PlayerViewModel di-share ke Home, Input, Match, dan Account
     val playerViewModel: PlayerViewModel = viewModel()
+
     val screensWithBottomNav = listOf(
         Screen.Home.route,
         Screen.Store.route,
@@ -90,26 +90,31 @@ fun AppNavigation(
         }
     ) { innerPadding ->
         NavHost(
-            navController = navController,
+            navController    = navController,
             startDestination = Screen.Splash.route,
-            modifier = Modifier.padding(innerPadding)
+            modifier         = Modifier.padding(innerPadding)
         ) {
             composable(Screen.Splash.route) { SplashScreen(navController) }
-            composable(Screen.Input.route) { InputScreen(navController, playerViewModel) }
-            composable(Screen.Home.route) { HomeScreen(navController, playerViewModel) }
-            composable(Screen.Store.route) { StoreScreen() }
+            composable(Screen.Input.route)  { InputScreen(navController, playerViewModel) }
+            composable(Screen.Home.route)   { HomeScreen(navController, playerViewModel) }
+            composable(Screen.Store.route)  {
+                val storeViewModel: StoreViewModel = viewModel()
+                StoreScreen(storeViewModel = storeViewModel)
+            }
             composable(Screen.Match.route) { backStackEntry ->
                 val matchId = backStackEntry.arguments?.getString("matchId") ?: ""
                 MatchScreen(matchId, navController, playerViewModel)
             }
-            composable(Screen.Account.route) { AccountScreen() }
+            composable(Screen.Account.route) {
+                // AccountScreen butuh playerViewModel untuk data card + rank
+                AccountScreen(playerViewModel = playerViewModel)
+            }
             composable(Screen.Agents.route) { backStackEntry ->
                 val agentsViewModel: AgentsViewModel = viewModel(backStackEntry)
                 AgentsScreen(navController, agentsViewModel)
             }
             composable(Screen.AgentDetail.route) { backStackEntry ->
                 val agentId = backStackEntry.arguments?.getString("agentId") ?: ""
-                // Reuse the same AgentsViewModel instance from the Agents screen
                 val agentsEntry = remember(backStackEntry) {
                     navController.getBackStackEntry(Screen.Agents.route)
                 }
@@ -120,10 +125,6 @@ fun AppNavigation(
                 val weaponsViewModel: WeaponsViewModel = viewModel()
                 WeaponsScreen(weaponsViewModel)
             }
-            composable(Screen.Store.route) {
-                val vm = storeViewModel ?: viewModel()
-                StoreScreen(storeViewModel = vm)
-            }
         }
     }
 }
@@ -131,10 +132,10 @@ fun AppNavigation(
 @Composable
 fun BottomNavigationBar(navController: NavController, currentRoute: String?) {
     val items = listOf(
-        BottomNavItem(Screen.Agents.route, Icons.Default.Person, "Agents"),
-        BottomNavItem(Screen.Weapons.route, Icons.Default.Star, "Weapons"),
-        BottomNavItem(Screen.Home.route, Icons.Default.Home, "Home"),
-        BottomNavItem(Screen.Store.route, Icons.Default.ShoppingCart, "Store"),
+        BottomNavItem(Screen.Agents.route,  Icons.Default.Person,        "Agents"),
+        BottomNavItem(Screen.Weapons.route, Icons.Default.Star,          "Weapons"),
+        BottomNavItem(Screen.Home.route,    Icons.Default.Home,          "Home"),
+        BottomNavItem(Screen.Store.route,   Icons.Default.ShoppingCart,  "Store"),
         BottomNavItem(Screen.Account.route, Icons.Default.AccountCircle, "Account"),
     )
 
@@ -145,21 +146,21 @@ fun BottomNavigationBar(navController: NavController, currentRoute: String?) {
         items.forEach { item ->
             NavigationBarItem(
                 selected = currentRoute == item.route,
-                onClick = {
+                onClick  = {
                     navController.navigate(item.route) {
                         popUpTo(Screen.Home.route) { saveState = true }
                         launchSingleTop = true
-                        restoreState = true
+                        restoreState    = true
                     }
                 },
-                icon = { Icon(item.icon, contentDescription = item.label) },
-                label = { Text(item.label) },
+                icon   = { Icon(item.icon, contentDescription = item.label) },
+                label  = { Text(item.label) },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = Color(0xFFFF4655),
-                    selectedTextColor = Color(0xFFFF4655),
+                    selectedIconColor   = Color(0xFFFF4655),
+                    selectedTextColor   = Color(0xFFFF4655),
                     unselectedIconColor = Color(0xFF9BA3AF),
                     unselectedTextColor = Color(0xFF9BA3AF),
-                    indicatorColor = Color(0xFF1A2332)
+                    indicatorColor      = Color(0xFF1A2332)
                 )
             )
         }

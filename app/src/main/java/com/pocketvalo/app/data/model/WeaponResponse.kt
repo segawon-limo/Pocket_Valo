@@ -30,7 +30,9 @@ data class SkinData(
 data class SkinLevelData(
     @SerializedName("uuid") val uuid: String,
     @SerializedName("displayName") val displayName: String?,
-    @SerializedName("displayIcon") val displayIcon: String?
+    @SerializedName("displayIcon") val displayIcon: String?,
+    // URL ke file .mp4 preview skin — null jika level ini tidak punya video
+    @SerializedName("streamedVideo") val streamedVideo: String?
 )
 
 data class SkinChromaData(

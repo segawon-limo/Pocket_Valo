@@ -4,8 +4,10 @@ import com.google.gson.Gson
 import com.pocketvalo.app.data.local.TokenStorage
 import com.pocketvalo.app.data.local.dao.StoreDao
 import com.pocketvalo.app.data.local.entity.StoreEntity
+import com.pocketvalo.app.data.model.PlayerLoadoutResponse
 import com.pocketvalo.app.data.model.StorefrontResponse
 import com.pocketvalo.app.data.model.WalletResponse
+import com.pocketvalo.app.data.remote.api.RetrofitClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -15,10 +17,16 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 data class StoreData(
     val skinUuids: List<String>,
+    val skinPrices: Map<String, Int> = emptyMap(),
     val offersExpiresAt: Long,
     val vpBalance: Int,
     val radBalance: Int,
     val fromCache: Boolean = false
+)
+
+data class PlayerTitleInfo(
+    val titleText: String?,   // null = no title equipped
+    val titleUuid: String?
 )
 
 class StoreRepository(
@@ -40,27 +48,29 @@ class StoreRepository(
         }
         .build()
 
+    // ── Store ─────────────────────────────────────────────────────────────────
+
     suspend fun getStore(forceRefresh: Boolean = false): AuthResult<StoreData> {
         val puuid = tokenStorage.puuid
             ?: return AuthResult.Failure(Exception("Not logged in"))
 
-        // Return cache if valid
         if (!forceRefresh) {
             val cached = storeDao.getStore(puuid)
             if (cached != null && System.currentTimeMillis() / 1000 < cached.offersExpiresAt) {
+                val prices = parsePricesFromCache(cached.skinPrices)
                 return AuthResult.Success(
                     StoreData(
-                        skinUuids = cached.skinOfferUuids.split(","),
+                        skinUuids      = cached.skinOfferUuids.split(","),
+                        skinPrices     = prices,
                         offersExpiresAt = cached.offersExpiresAt,
-                        vpBalance = cached.vpBalance,
-                        radBalance = cached.radBalance,
-                        fromCache = true
+                        vpBalance      = cached.vpBalance,
+                        radBalance     = cached.radBalance,
+                        fromCache      = true
                     )
                 )
             }
         }
 
-        // Ensure token valid
         val tokenResult = authRepository.ensureValidToken()
         if (tokenResult.isFailure) {
             return AuthResult.Failure(
@@ -87,6 +97,7 @@ class StoreRepository(
                         .header("X-Riot-Entitlements-JWT", entitlement)
                         .build()
                 ) ?: return@withContext AuthResult.Failure(Exception("Failed to fetch storefront"))
+                android.util.Log.d("StoreDebug", "SkinsPanelLayout: ${gson.toJson(storefrontResp.skinsPanelLayout)}")
 
                 if (storefrontResp.httpStatus == 400) {
                     return@withContext AuthResult.Failure(
@@ -94,10 +105,18 @@ class StoreRepository(
                     )
                 }
 
-                val skinOffers = storefrontResp.skinsPanelLayout?.singleItemOffers
+                val skinsPanelLayout = storefrontResp.skinsPanelLayout
                     ?: return@withContext AuthResult.Failure(Exception("No skin offers in response"))
 
-                val remainingSec = storefrontResp.skinsPanelLayout.remainingDurationInSeconds
+                val skinOffers = skinsPanelLayout.singleItemOffers
+
+                val skinPrices: Map<String, Int> = skinsPanelLayout.singleItemStoreOffers
+                    ?.associate { storeOffer ->
+                        storeOffer.offerId to (storeOffer.offer?.vpCost ?: 0)
+                    }
+                    ?: emptyMap()
+
+                val remainingSec = skinsPanelLayout.remainingDurationInSeconds
                 val expiresAt = System.currentTimeMillis() / 1000 + remainingSec
 
                 val walletResp = execute<WalletResponse>(
@@ -111,27 +130,91 @@ class StoreRepository(
 
                 storeDao.upsertStore(
                     StoreEntity(
-                        puuid = puuid,
-                        skinOfferUuids = skinOffers.joinToString(","),
+                        puuid           = puuid,
+                        skinOfferUuids  = skinOffers.joinToString(","),
+                        skinPrices      = serializePrices(skinPrices),
                         offersExpiresAt = expiresAt,
-                        vpBalance = walletResp?.vp ?: 0,
-                        radBalance = walletResp?.rad ?: 0
+                        vpBalance       = walletResp?.vp ?: 0,
+                        radBalance      = walletResp?.rad ?: 0
                     )
                 )
 
                 AuthResult.Success(
                     StoreData(
-                        skinUuids = skinOffers,
+                        skinUuids       = skinOffers,
+                        skinPrices      = skinPrices,
                         offersExpiresAt = expiresAt,
-                        vpBalance = walletResp?.vp ?: 0,
-                        radBalance = walletResp?.rad ?: 0,
-                        fromCache = false
+                        vpBalance       = walletResp?.vp ?: 0,
+                        radBalance      = walletResp?.rad ?: 0,
+                        fromCache       = false
                     )
                 )
             } catch (e: Exception) {
                 AuthResult.Failure(e)
             }
         }
+    }
+
+    // ── Player title ──────────────────────────────────────────────────────────
+    // Step 1: fetch loadout dari PVP API → dapat PlayerTitleID
+    // Step 2: resolve UUID ke nama title via valorant-api.com
+
+    suspend fun fetchPlayerTitle(): AuthResult<PlayerTitleInfo> {
+        val tokenResult = authRepository.ensureValidToken()
+        if (tokenResult.isFailure) {
+            return AuthResult.Failure(
+                tokenResult.exceptionOrNull() ?: Exception("Token refresh failed")
+            )
+        }
+
+        val puuid       = tokenStorage.puuid       ?: return AuthResult.Failure(Exception("Not logged in"))
+        val region      = tokenStorage.region      ?: return AuthResult.Failure(Exception("Region not set"))
+        val accessToken = tokenStorage.accessToken ?: return AuthResult.Failure(Exception("No access token"))
+        val entitlement = tokenStorage.entitlementToken ?: return AuthResult.Failure(Exception("No entitlement token"))
+
+        return withContext(Dispatchers.IO) {
+            try {
+                // Step 1 — loadout dari PVP API
+                val loadout = execute<PlayerLoadoutResponse>(
+                    Request.Builder()
+                        .url("https://pd.$region.a.pvp.net/personalization/v2/players/$puuid/playerloadout")
+                        .get()
+                        .header("Authorization", "Bearer $accessToken")
+                        .header("X-Riot-Entitlements-JWT", entitlement)
+                        .build()
+                )
+
+                val titleId = loadout?.identity?.playerTitleId
+                    ?: return@withContext AuthResult.Success(PlayerTitleInfo(null, null))
+
+                // Default title UUID — player belum set title
+                if (titleId == "00000000-0000-0000-0000-000000000000") {
+                    return@withContext AuthResult.Success(PlayerTitleInfo(null, titleId))
+                }
+
+                // Step 2 — resolve title UUID ke nama via valorant-api.com
+                val titleResp = RetrofitClient.valorantApi.getPlayerTitle(titleId)
+                val titleText = titleResp.body()?.data?.titleText
+
+                AuthResult.Success(PlayerTitleInfo(titleText, titleId))
+            } catch (e: Exception) {
+                AuthResult.Failure(e)
+            }
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private fun parsePricesFromCache(raw: String): Map<String, Int> {
+        if (raw.isBlank()) return emptyMap()
+        return raw.split(",").mapNotNull { pair ->
+            val parts = pair.split(":")
+            if (parts.size == 2) parts[0] to (parts[1].toIntOrNull() ?: 0) else null
+        }.toMap()
+    }
+
+    private fun serializePrices(prices: Map<String, Int>): String {
+        return prices.entries.joinToString(",") { "${it.key}:${it.value}" }
     }
 
     private inline fun <reified T> execute(request: Request): T? {

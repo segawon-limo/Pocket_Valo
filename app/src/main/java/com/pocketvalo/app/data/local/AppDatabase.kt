@@ -13,7 +13,7 @@ import com.pocketvalo.app.data.local.entity.StoreEntity
 
 @Database(
     entities = [AccountEntity::class, MatchEntity::class, StoreEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
