@@ -84,7 +84,7 @@ class PlayerRepository(context: Context) {
         apiKey: String
     ): Result<MatchHistoryResponse> = withContext(Dispatchers.IO) {
         try {
-            val response = api.getMatchHistory(region, name, tag, apiKey)
+            val response = api.getMatchHistory(region, name, tag, size = 30, apiKey)
             if (response.isSuccessful) {
                 response.body()?.let { matchResponse ->
                     val riotId = "$name#$tag"
@@ -94,7 +94,7 @@ class PlayerRepository(context: Context) {
 
                     if (entities.isNotEmpty()) {
                         matchDao.upsertMatches(entities)
-                        matchDao.trimHistory(riotId, keep = 20)
+                        matchDao.trimHistory(riotId, keep = 50)
                     }
                     Result.Success(matchResponse)
                 } ?: Result.Error("Empty response")

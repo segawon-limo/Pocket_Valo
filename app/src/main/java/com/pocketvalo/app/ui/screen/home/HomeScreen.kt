@@ -31,6 +31,11 @@ fun HomeScreen(
 ) {
     val uiState by playerViewModel.uiState.collectAsStateWithLifecycle()
 
+    // Jika user masuk via Riot auth (bukan InputScreen), trigger load dari TokenStorage
+    LaunchedEffect(Unit) {
+        playerViewModel.loadFromTokenIfNeeded()
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()

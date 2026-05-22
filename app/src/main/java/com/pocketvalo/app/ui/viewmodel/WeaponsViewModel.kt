@@ -19,7 +19,7 @@ data class WeaponsUiState(
 
 class WeaponsViewModel : ViewModel() {
 
-    private val repository = AssetsRepository()
+    private val repository = AssetsRepository.getInstance()
 
     private val _uiState = MutableStateFlow(WeaponsUiState())
     val uiState: StateFlow<WeaponsUiState> = _uiState

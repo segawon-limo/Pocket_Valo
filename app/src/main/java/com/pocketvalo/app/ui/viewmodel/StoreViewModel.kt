@@ -18,85 +18,29 @@ import kotlinx.coroutines.withContext
 
 data class StoreUiState(
     val isLoading: Boolean = false,
-    val isLoggedIn: Boolean = false,
-    val showAuthWebView: Boolean = false,
-    val authUrl: String? = null,
     val store: StoreData? = null,
     val error: String? = null,
-    val username: String? = null
+    val username: String? = null,
+    val sessionExpired: Boolean = false  // signal LoginScreen navigation
 )
 
 class StoreViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val tokenStorage = TokenStorage(application)
+    private val tokenStorage   = TokenStorage(application)
     private val authRepository = RiotAuthRepository(tokenStorage)
-    private val assetsRepository = AssetsRepository()
-    private val storeRepository = StoreRepository(
-        tokenStorage = tokenStorage,
+    private val assetsRepository = AssetsRepository.getInstance()
+    private val storeRepository  = StoreRepository(
+        tokenStorage   = tokenStorage,
         authRepository = authRepository,
-        storeDao = AppDatabase.getInstance(application).storeDao()
+        storeDao       = AppDatabase.getInstance(application).storeDao()
     )
 
     private val _uiState = MutableStateFlow(StoreUiState())
     val uiState: StateFlow<StoreUiState> = _uiState
 
     init {
-        checkLoginState()
-    }
-
-    private fun checkLoginState() {
-        val loggedIn = tokenStorage.isLoggedIn
-        _uiState.value = _uiState.value.copy(
-            isLoggedIn = loggedIn,
-            username = tokenStorage.username
-        )
-        if (loggedIn) loadStore()
-    }
-
-    fun startLogin() {
-        val url = authRepository.generateAuthUrl()
-        _uiState.value = _uiState.value.copy(
-            authUrl = url,
-            showAuthWebView = true,
-            error = null
-        )
-    }
-
-    fun dismissAuthWebView() {
-        _uiState.value = _uiState.value.copy(
-            showAuthWebView = false,
-            authUrl = null
-        )
-    }
-
-    fun handleAuthCode(code: String) {
-        android.util.Log.d("StoreViewModel", "handleAuthCode called, code length: ${code.length}")
-        _uiState.value = _uiState.value.copy(
-            showAuthWebView = false,
-            authUrl = null,
-            isLoading = true,
-            error = null
-        )
-        viewModelScope.launch {
-            android.util.Log.d("StoreViewModel", "Calling loginWithCode...")
-            when (val result = authRepository.loginWithCode(code)) {
-                is AuthResult.Success -> {
-                    android.util.Log.d("StoreViewModel", "Login success, username: ${tokenStorage.username}")
-                    _uiState.value = _uiState.value.copy(
-                        isLoggedIn = true,
-                        username = tokenStorage.username
-                    )
-                    loadStore()
-                }
-                is AuthResult.Failure -> {
-                    android.util.Log.e("StoreViewModel", "Login failed: ${result.error.message}")
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = result.error.message ?: "Login failed"
-                    )
-                }
-            }
-        }
+        _uiState.value = _uiState.value.copy(username = tokenStorage.username)
+        loadStore()
     }
 
     fun loadStore(forceRefresh: Boolean = false) {
@@ -106,7 +50,7 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
                 is AuthResult.Success -> {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        store = result.data
+                        store     = result.data
                     )
                 }
                 is AuthResult.Failure -> {
@@ -116,25 +60,18 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
                     if (needsRelogin) {
                         authRepository.logout()
                         _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            isLoggedIn = false,
-                            store = null,
-                            error = "Session expired. Please login again."
+                            isLoading      = false,
+                            sessionExpired = true
                         )
                     } else {
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
-                            error = errorMsg
+                            error     = errorMsg
                         )
                     }
                 }
             }
         }
-    }
-
-    fun logout() {
-        authRepository.logout()
-        _uiState.value = StoreUiState(isLoggedIn = false)
     }
 
     fun dismissError() {

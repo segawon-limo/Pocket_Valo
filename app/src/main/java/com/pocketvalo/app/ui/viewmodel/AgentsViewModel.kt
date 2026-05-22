@@ -19,7 +19,7 @@ data class AgentsUiState(
 
 class AgentsViewModel : ViewModel() {
 
-    private val repository = AssetsRepository()
+    private val repository = AssetsRepository.getInstance()
 
     private val _uiState = MutableStateFlow(AgentsUiState())
     val uiState: StateFlow<AgentsUiState> = _uiState

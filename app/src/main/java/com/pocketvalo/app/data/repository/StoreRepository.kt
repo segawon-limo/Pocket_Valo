@@ -25,8 +25,10 @@ data class StoreData(
 )
 
 data class PlayerTitleInfo(
-    val titleText: String?,   // null = no title equipped
-    val titleUuid: String?
+    val titleText: String?,     // null = no title equipped
+    val titleUuid: String?,
+    val playerCardId: String?,  // UUID dari loadout → construct largeart URL
+    val accountLevel: Int?      // dari loadout Identity
 )
 
 class StoreRepository(
@@ -112,7 +114,7 @@ class StoreRepository(
 
                 val skinPrices: Map<String, Int> = skinsPanelLayout.singleItemStoreOffers
                     ?.associate { storeOffer ->
-                        storeOffer.offerId to (storeOffer.offer?.vpCost ?: 0)
+                        storeOffer.offerId to storeOffer.vpCost
                     }
                     ?: emptyMap()
 
@@ -184,19 +186,28 @@ class StoreRepository(
                         .build()
                 )
 
-                val titleId = loadout?.identity?.playerTitleId
-                    ?: return@withContext AuthResult.Success(PlayerTitleInfo(null, null))
+                val titleId     = loadout?.identity?.playerTitleId
+                val playerCardId = loadout?.identity?.playerCardId
+                val accountLevel = loadout?.identity?.accountLevel
+
+                if (titleId == null) {
+                    return@withContext AuthResult.Success(
+                        PlayerTitleInfo(null, null, playerCardId, accountLevel)
+                    )
+                }
 
                 // Default title UUID — player belum set title
                 if (titleId == "00000000-0000-0000-0000-000000000000") {
-                    return@withContext AuthResult.Success(PlayerTitleInfo(null, titleId))
+                    return@withContext AuthResult.Success(
+                        PlayerTitleInfo(null, titleId, playerCardId, accountLevel)
+                    )
                 }
 
                 // Step 2 — resolve title UUID ke nama via valorant-api.com
                 val titleResp = RetrofitClient.valorantApi.getPlayerTitle(titleId)
                 val titleText = titleResp.body()?.data?.titleText
 
-                AuthResult.Success(PlayerTitleInfo(titleText, titleId))
+                AuthResult.Success(PlayerTitleInfo(titleText, titleId, playerCardId, accountLevel))
             } catch (e: Exception) {
                 AuthResult.Failure(e)
             }

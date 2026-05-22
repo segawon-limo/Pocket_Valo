@@ -6,16 +6,30 @@ import com.pocketvalo.app.data.model.MapData
 import com.pocketvalo.app.data.model.AgentData
 import com.pocketvalo.app.data.model.WeaponData
 import com.pocketvalo.app.data.remote.api.RetrofitClient
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
-class AssetsRepository {
+class AssetsRepository private constructor() {
 
     private val api = RetrofitClient.valorantApi
     private var cachedTiers: Map<String, TierData> = emptyMap()
     private var cachedMaps: Map<String, MapData> = emptyMap()
     private var cachedAgents: List<AgentData> = emptyList()
     private var cachedWeapons: List<WeaponData> = emptyList()
-    // Level borders sorted ascending by startingLevel
     private var cachedLevelBorders: List<LevelBorderData> = emptyList()
+
+    // ── Singleton ─────────────────────────────────────────────────────────────
+
+    companion object {
+        @Volatile private var INSTANCE: AssetsRepository? = null
+
+        fun getInstance(): AssetsRepository =
+            INSTANCE ?: synchronized(this) {
+                INSTANCE ?: AssetsRepository().also { INSTANCE = it }
+            }
+    }
+
+    // ── Competitive tiers ─────────────────────────────────────────────────────
 
     suspend fun getCompetitiveTiers(): Result<Map<String, TierData>> {
         if (cachedTiers.isNotEmpty()) return Result.Success(cachedTiers)
@@ -35,6 +49,8 @@ class AssetsRepository {
         }
     }
 
+    // ── Maps ──────────────────────────────────────────────────────────────────
+
     suspend fun getMaps(): Result<Map<String, MapData>> {
         if (cachedMaps.isNotEmpty()) return Result.Success(cachedMaps)
         return try {
@@ -50,6 +66,8 @@ class AssetsRepository {
             Result.Error(e.message ?: "Network error")
         }
     }
+
+    // ── Agents ────────────────────────────────────────────────────────────────
 
     suspend fun getAgents(): Result<List<AgentData>> {
         if (cachedAgents.isNotEmpty()) return Result.Success(cachedAgents)
@@ -83,7 +101,6 @@ class AssetsRepository {
                 return null
             }
         }
-        // Cari border dengan startingLevel tertinggi yang masih <= accountLevel
         return cachedLevelBorders
             .filter { it.startingLevel <= accountLevel }
             .maxByOrNull { it.startingLevel }
@@ -91,7 +108,7 @@ class AssetsRepository {
 
     // ── Skin level cache ──────────────────────────────────────────────────────
 
-    @Volatile private var isBuildingCache = false
+    private val skinCacheMutex = Mutex()
     private var skinLevelCache: Map<String, StoreSkinInfo> = emptyMap()
 
     data class StoreSkinInfo(
@@ -103,14 +120,19 @@ class AssetsRepository {
     )
 
     suspend fun getSkinByLevelUuid(levelUuid: String): StoreSkinInfo? {
-        if (skinLevelCache.isEmpty() && !isBuildingCache) {
-            buildSkinLevelCache()
+        if (skinLevelCache.isEmpty()) {
+            skinCacheMutex.withLock {
+                // Double-check after acquiring lock — another coroutine may have populated it
+                if (skinLevelCache.isEmpty()) {
+                    buildSkinLevelCache()
+                }
+            }
         }
         return skinLevelCache[levelUuid]
     }
 
+    /** Builds the full skin cache from /v1/weapons. Already guarded by skinCacheMutex. */
     private suspend fun buildSkinLevelCache() {
-        isBuildingCache = true
         try {
             val response = RetrofitClient.valorantApi.getWeapons()
             if (!response.isSuccessful) return
@@ -133,11 +155,13 @@ class AssetsRepository {
                 }
             }
             skinLevelCache = cache
-        } catch (_: Exception) {
-        } finally {
-            isBuildingCache = false
-        }
+        } catch (_: Exception) { }
     }
+
+    /** Called by LoadingViewModel to warm the skin cache upfront. */
+    suspend fun prefetchWeapons(): Result<List<WeaponData>> = getWeapons()
+
+    // ── Weapons ───────────────────────────────────────────────────────────────
 
     suspend fun getWeapons(): Result<List<WeaponData>> {
         if (cachedWeapons.isNotEmpty()) return Result.Success(cachedWeapons)
@@ -160,6 +184,12 @@ class AssetsRepository {
                     )
                     ?: emptyList()
                 cachedWeapons = weapons
+                // Also populate skin cache if it's empty (avoid double network call later)
+                if (skinLevelCache.isEmpty()) {
+                    skinCacheMutex.withLock {
+                        if (skinLevelCache.isEmpty()) buildSkinLevelCache()
+                    }
+                }
                 Result.Success(weapons)
             } else Result.Error("Failed to load weapons")
         } catch (e: Exception) {

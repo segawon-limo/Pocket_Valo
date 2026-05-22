@@ -15,12 +15,11 @@ import kotlinx.coroutines.launch
 
 data class AccountUiState(
     val isLoading: Boolean = false,
-    val isLoggedIn: Boolean = false,
     val username: String? = null,
     val puuid: String? = null,
     val playerCardUrl: String? = null,
     val accountLevel: Int? = null,
-    val levelBorderUrl: String? = null,     // dari /v1/levelborders
+    val levelBorderUrl: String? = null,
     val rankName: String? = null,
     val rankIconUrl: String? = null,
     val titleText: String? = null,
@@ -30,27 +29,21 @@ data class AccountUiState(
 
 class AccountViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val tokenStorage    = TokenStorage(application)
-    private val db              = AppDatabase.getInstance(application)
-    private val authRepo        = RiotAuthRepository(tokenStorage)
-    private val storeRepo       = StoreRepository(tokenStorage, authRepo, db.storeDao())
-    private val assetsRepo      = AssetsRepository()
+    private val tokenStorage = TokenStorage(application)
+    private val db           = AppDatabase.getInstance(application)
+    private val authRepo     = RiotAuthRepository(tokenStorage)
+    private val storeRepo    = StoreRepository(tokenStorage, authRepo, db.storeDao())
+    private val assetsRepo   = AssetsRepository.getInstance()  // shared singleton
 
     private val _uiState = MutableStateFlow(AccountUiState())
     val uiState: StateFlow<AccountUiState> = _uiState
 
     init {
-        loadFromStorage()
-    }
-
-    private fun loadFromStorage() {
-        val loggedIn = tokenStorage.isLoggedIn
         _uiState.value = _uiState.value.copy(
-            isLoggedIn = loggedIn,
-            username   = tokenStorage.username,
-            puuid      = tokenStorage.puuid
+            username = tokenStorage.username,
+            puuid    = tokenStorage.puuid
         )
-        if (loggedIn) fetchTitle()
+        fetchTitle()
     }
 
     fun setPlayerData(
@@ -60,13 +53,14 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         rankIconUrl: String?
     ) {
         _uiState.value = _uiState.value.copy(
-            playerCardUrl = playerCardUrl,
-            accountLevel  = accountLevel,
+            // Prefer Henrik data kalau ada, jangan overwrite dengan null
+            playerCardUrl = playerCardUrl ?: _uiState.value.playerCardUrl,
+            accountLevel  = accountLevel  ?: _uiState.value.accountLevel,
             rankName      = rankName,
             rankIconUrl   = rankIconUrl
         )
-        // Fetch level border setelah accountLevel diketahui
-        if (accountLevel != null) fetchLevelBorder(accountLevel)
+        val resolvedLevel = accountLevel ?: _uiState.value.accountLevel
+        if (resolvedLevel != null) fetchLevelBorder(resolvedLevel)
     }
 
     private fun fetchLevelBorder(accountLevel: Int) {
@@ -83,9 +77,20 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
             _uiState.value = _uiState.value.copy(isTitleLoading = true)
             when (val result = storeRepo.fetchPlayerTitle()) {
                 is AuthResult.Success -> {
+                    val info = result.data
+                    // Construct player card large art URL from loadout UUID
+                    // Tidak butuh Henrik API — URL deterministik dari valorant-api.com CDN
+                    val cardUrl = info.playerCardId
+                        ?.takeIf { it != "00000000-0000-0000-0000-000000000000" }
+                        ?.let { "https://media.valorant-api.com/playercards/$it/largeart.png" }
+
                     _uiState.value = _uiState.value.copy(
-                        titleText      = result.data.titleText,
-                        isTitleLoading = false
+                        titleText      = info.titleText,
+                        isTitleLoading = false,
+                        // Hanya overwrite playerCardUrl kalau Henrik belum set (accountData belum ada)
+                        playerCardUrl  = _uiState.value.playerCardUrl ?: cardUrl,
+                        // Hanya overwrite accountLevel kalau belum dapat dari Henrik
+                        accountLevel   = _uiState.value.accountLevel ?: info.accountLevel
                     )
                 }
                 is AuthResult.Failure -> {
@@ -96,6 +101,10 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refresh() {
-        loadFromStorage()
+        _uiState.value = _uiState.value.copy(
+            username = tokenStorage.username,
+            puuid    = tokenStorage.puuid
+        )
+        fetchTitle()
     }
 }

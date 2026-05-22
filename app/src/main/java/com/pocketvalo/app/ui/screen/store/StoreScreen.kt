@@ -36,11 +36,11 @@ private data class TierConfig(
 )
 
 private fun tierConfigFromUuid(uuid: String?): TierConfig = when (uuid) {
-    "12683d76-48d7-84a3-4e09-6985794f0445" -> TierConfig(Color(0xFF00C4C4), Color(0xFF003333), R.drawable.tier_select)
-    "0cebb14f-4d31-e993-3c8d-33498af53267" -> TierConfig(Color(0xFF1A6BB5), Color(0xFF051829), R.drawable.tier_deluxe)
-    "60bca084-c101-dee1-2a0e-f8f5b82dc30f" -> TierConfig(Color(0xFFD44062), Color(0xFF3A0515), R.drawable.tier_premium)
-    "411e4a55-4e59-7757-41f0-86a53f101bb5" -> TierConfig(Color(0xFFD4A017), Color(0xFF2A1500), R.drawable.tier_ultra)
-    "e046854e-406c-37f4-6607-19a9ba8426fc" -> TierConfig(Color(0xFFE07B20), Color(0xFF2A0E00), R.drawable.tier_exclusive)
+    "12683d76-48d7-84a3-4e09-6985794f0445" -> TierConfig(Color(0xFF2E5477), Color(0xFF003333), R.drawable.tier_select)
+    "0cebb8be-46d7-c12a-d306-e9907bfc5a25" -> TierConfig(Color(0xFF168C8C), Color(0xFF051829), R.drawable.tier_deluxe)
+    "60bca084-c101-dee1-2a0e-f8f5b82dc30f" -> TierConfig(Color(0xFF803143), Color(0xFF3A0515), R.drawable.tier_premium)
+    "411e4a55-4e59-7757-41f0-86a53f101bb5" -> TierConfig(Color(0xFF9B8036), Color(0xFF2A1500), R.drawable.tier_ultra)
+    "e046854e-406c-37f4-6607-19a9ba8426fc" -> TierConfig(Color(0xFF9F6127), Color(0xFF2A0E00), R.drawable.tier_exclusive)
     else -> TierConfig(Color(0xFF4A4A4A), Color(0xFF111111), null)
 }
 
@@ -50,8 +50,20 @@ private const val VP_ICON_URL =
 // ── Root screen ───────────────────────────────────────────────────────────────
 
 @Composable
-fun StoreScreen(storeViewModel: StoreViewModel) {
+fun StoreScreen(
+    storeViewModel: StoreViewModel,
+    navController: androidx.navigation.NavController? = null
+) {
     val uiState by storeViewModel.uiState.collectAsState()
+
+    // If refresh token is revoked, kick back to Login
+    LaunchedEffect(uiState.sessionExpired) {
+        if (uiState.sessionExpired) {
+            navController?.navigate(com.pocketvalo.app.ui.navigation.Screen.Login.route) {
+                popUpTo(com.pocketvalo.app.ui.navigation.Screen.Home.route) { inclusive = false }
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -59,25 +71,15 @@ fun StoreScreen(storeViewModel: StoreViewModel) {
             .background(Color(0xFF0F1923))
     ) {
         when {
-            uiState.isLoading    -> LoadingState()
-            !uiState.isLoggedIn  -> LoginPrompt(onLoginClick = { storeViewModel.startLogin() })
+            uiState.isLoading     -> LoadingState()
             uiState.store != null -> StoreContent(
                 uiState        = uiState,
                 storeViewModel = storeViewModel,
-                onRefresh      = { storeViewModel.loadStore(forceRefresh = true) },
-                onLogout       = { storeViewModel.logout() }
+                onRefresh      = { storeViewModel.loadStore(forceRefresh = true) }
             )
             uiState.error != null -> ErrorState(
                 error   = uiState.error!!,
                 onRetry = { storeViewModel.loadStore() }
-            )
-        }
-
-        if (uiState.showAuthWebView && uiState.authUrl != null) {
-            RiotAuthWebView(
-                authUrl        = uiState.authUrl!!,
-                onCodeReceived = { code -> storeViewModel.handleAuthCode(code) },
-                onDismiss      = { storeViewModel.dismissAuthWebView() }
             )
         }
     }
@@ -89,8 +91,7 @@ fun StoreScreen(storeViewModel: StoreViewModel) {
 private fun StoreContent(
     uiState: StoreUiState,
     storeViewModel: StoreViewModel,
-    onRefresh: () -> Unit,
-    onLogout: () -> Unit
+    onRefresh: () -> Unit
 ) {
     val store = uiState.store!!
     val remainingSec = store.offersExpiresAt - System.currentTimeMillis() / 1000
@@ -132,15 +133,9 @@ private fun StoreContent(
         items(store.skinUuids) { skinUuid ->
             SkinOfferCard(
                 skinUuid       = skinUuid,
-                storeViewModel = storeViewModel
+                storeViewModel = storeViewModel,
+                offerPrice     = store.skinPrices[skinUuid]
             )
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(4.dp))
-            TextButton(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
-                Text("Logout from Store", color = Color(0xFF6B7280), fontSize = 13.sp)
-            }
         }
     }
 }
@@ -150,14 +145,15 @@ private fun StoreContent(
 @Composable
 private fun SkinOfferCard(
     skinUuid: String,
-    storeViewModel: StoreViewModel
+    storeViewModel: StoreViewModel,
+    offerPrice: Int?                   // harga dari Riot store offer (akurat)
 ) {
     var skinName by remember { mutableStateOf("") }
     var iconUrl  by remember {
         mutableStateOf("https://media.valorant-api.com/weaponskinlevels/$skinUuid/displayicon.png")
     }
     var tierUuid  by remember { mutableStateOf<String?>(null) }
-    var vpPrice   by remember { mutableStateOf<Int?>(null) }
+    var vpPrice   by remember { mutableStateOf<Int?>(offerPrice) }  // init dari offer
     var videoUrl  by remember { mutableStateOf<String?>(null) }
     var showVideo by remember { mutableStateOf(false) }
 
@@ -167,8 +163,11 @@ private fun SkinOfferCard(
             skinName = info.displayName
             tierUuid = info.tierUuid
             videoUrl = info.videoUrl
-            if (info.cost > 0) vpPrice = info.cost
             if (info.displayIcon != null) iconUrl = info.displayIcon
+            // Hanya pakai shopData.cost sebagai fallback kalau offer price tidak ada
+            if (vpPrice == null || vpPrice == 0) {
+                if (info.cost > 0) vpPrice = info.cost
+            }
         }
     }
 
@@ -308,39 +307,6 @@ private fun RowScope.BalanceChip(label: String, amount: Int, color: Color) {
 }
 
 // ── States ────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun LoginPrompt(onLoginClick: () -> Unit) {
-    Column(
-        modifier            = Modifier.fillMaxSize().padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text("🛒", fontSize = 56.sp)
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("Daily Store", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            "Login with your Riot account to see your daily skin offers.",
-            color = Color(0xFF9BA3AF), fontSize = 14.sp,
-            textAlign = TextAlign.Center, lineHeight = 20.sp
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            "Your password is never stored — only a secure token.",
-            color = Color(0xFF6B7280), fontSize = 12.sp, textAlign = TextAlign.Center
-        )
-        Spacer(modifier = Modifier.height(32.dp))
-        Button(
-            onClick  = onLoginClick,
-            colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF4655)),
-            shape    = RoundedCornerShape(8.dp),
-            modifier = Modifier.fillMaxWidth().height(48.dp)
-        ) {
-            Text("Login with Riot", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        }
-    }
-}
 
 @Composable
 private fun LoadingState() {

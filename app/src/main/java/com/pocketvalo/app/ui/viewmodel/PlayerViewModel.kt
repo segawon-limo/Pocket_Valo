@@ -9,6 +9,7 @@ import com.pocketvalo.app.data.local.entity.MatchEntity
 import com.pocketvalo.app.data.model.AccountData
 import com.pocketvalo.app.data.model.MapData
 import com.pocketvalo.app.data.model.TierData
+import com.pocketvalo.app.data.local.TokenStorage
 import com.pocketvalo.app.data.repository.AssetsRepository
 import com.pocketvalo.app.data.repository.PlayerRepository
 import com.pocketvalo.app.data.repository.Result
@@ -34,7 +35,8 @@ data class PlayerUiState(
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = PlayerRepository(application)
-    private val assetsRepository = AssetsRepository()
+    private val assetsRepository = AssetsRepository.getInstance()
+    private val tokenStorage = TokenStorage(application)
 
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState
@@ -44,6 +46,24 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         observeSavedAccounts()
+    }
+
+    /**
+     * Called by HomeScreen on mount when user came through the Riot auth flow
+     * (i.e. no InputScreen was visited). Reads gameName#tagLine from TokenStorage
+     * and triggers the full player data load.
+     * No-op if accountData is already loaded or username isn't stored.
+     */
+    fun loadFromTokenIfNeeded() {
+        if (_uiState.value.accountData != null) return
+        if (_uiState.value.isLoading) return
+        val username = tokenStorage.username ?: return
+        val parts = username.split("#")
+        if (parts.size != 2) return
+        val name = parts[0].trim()
+        val tag  = parts[1].trim()
+        if (name.isBlank() || tag.isBlank()) return
+        loadPlayerData(name, tag)
     }
 
     private fun observeSavedAccounts() {
@@ -59,7 +79,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         activeRiotId = riotId
         viewModelScope.launch {
             repository.getCachedMatchHistory(riotId).collect { matches ->
-                _uiState.value = _uiState.value.copy(matchHistory = matches)
+                val filtered = matches
+                    .filter { it.mode.equals("Competitive", ignoreCase = true) ||
+                            it.mode.equals("Unrated", ignoreCase = true) }
+                    .take(10)
+                _uiState.value = _uiState.value.copy(matchHistory = filtered)
             }
         }
     }

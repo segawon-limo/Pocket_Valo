@@ -55,19 +55,13 @@ data class SkinsPanelLayout(
 )
 
 data class SingleItemStoreOffer(
-    @SerializedName("OfferID") val offerId: String,           // = levelUuid level[0]
+    @SerializedName("OfferID") val offerId: String,
     @SerializedName("IsDirectPurchase") val isDirectPurchase: Boolean,
-    @SerializedName("Offer") val offer: SingleItemOffer?
-)
-
-data class SingleItemOffer(
-    // Key = currency UUID, value = harga. VP UUID = "85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741"
-    @SerializedName("Cost") val cost: Map<String, Int>?
+    @SerializedName("Cost") val cost: Map<String, Int>?   // langsung di top level
 ) {
     companion object {
         const val VP_CURRENCY_UUID = "85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741"
     }
-
     val vpCost: Int get() = cost?.get(VP_CURRENCY_UUID) ?: 0
 }
 

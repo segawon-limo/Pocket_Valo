@@ -32,6 +32,8 @@ import com.pocketvalo.app.ui.screen.agents.AgentDetailScreen
 import com.pocketvalo.app.ui.screen.agents.AgentsScreen
 import com.pocketvalo.app.ui.screen.home.HomeScreen
 import com.pocketvalo.app.ui.screen.input.InputScreen
+import com.pocketvalo.app.ui.screen.loading.LoadingScreen
+import com.pocketvalo.app.ui.screen.login.LoginScreen
 import com.pocketvalo.app.ui.screen.match.MatchScreen
 import com.pocketvalo.app.ui.screen.splash.SplashScreen
 import com.pocketvalo.app.ui.screen.store.StoreScreen
@@ -42,16 +44,18 @@ import com.pocketvalo.app.ui.viewmodel.StoreViewModel
 import com.pocketvalo.app.ui.viewmodel.WeaponsViewModel
 
 sealed class Screen(val route: String) {
-    object Splash     : Screen("splash")
-    object Input      : Screen("input")
-    object Home       : Screen("home")
-    object Store      : Screen("store")
-    object Match      : Screen("match/{matchId}") {
+    object Splash      : Screen("splash")
+    object Login       : Screen("login")
+    object Loading     : Screen("loading")
+    object Input       : Screen("input")
+    object Home        : Screen("home")
+    object Store       : Screen("store")
+    object Match       : Screen("match/{matchId}") {
         fun createRoute(matchId: String) = "match/$matchId"
     }
-    object Account    : Screen("account")
-    object Agents     : Screen("agents")
-    object Weapons    : Screen("weapons")
+    object Account     : Screen("account")
+    object Agents      : Screen("agents")
+    object Weapons     : Screen("weapons")
     object AgentDetail : Screen("agent/{agentId}") {
         fun createRoute(agentId: String) = "agent/$agentId"
     }
@@ -67,7 +71,7 @@ data class BottomNavItem(
 fun AppNavigation(
     navController: NavHostController = rememberNavController()
 ) {
-    // PlayerViewModel di-share ke Home, Input, Match, dan Account
+    // PlayerViewModel shared across Home, Input, Match, Account
     val playerViewModel: PlayerViewModel = viewModel()
 
     val screensWithBottomNav = listOf(
@@ -94,19 +98,20 @@ fun AppNavigation(
             startDestination = Screen.Splash.route,
             modifier         = Modifier.padding(innerPadding)
         ) {
-            composable(Screen.Splash.route) { SplashScreen(navController) }
-            composable(Screen.Input.route)  { InputScreen(navController, playerViewModel) }
-            composable(Screen.Home.route)   { HomeScreen(navController, playerViewModel) }
-            composable(Screen.Store.route)  {
+            composable(Screen.Splash.route)  { SplashScreen(navController) }
+            composable(Screen.Login.route)   { LoginScreen(navController) }
+            composable(Screen.Loading.route) { LoadingScreen(navController, playerViewModel) }
+            composable(Screen.Input.route)   { InputScreen(navController, playerViewModel) }
+            composable(Screen.Home.route)    { HomeScreen(navController, playerViewModel) }
+            composable(Screen.Store.route) {
                 val storeViewModel: StoreViewModel = viewModel()
-                StoreScreen(storeViewModel = storeViewModel)
+                StoreScreen(storeViewModel = storeViewModel, navController = navController)
             }
             composable(Screen.Match.route) { backStackEntry ->
                 val matchId = backStackEntry.arguments?.getString("matchId") ?: ""
                 MatchScreen(matchId, navController, playerViewModel)
             }
             composable(Screen.Account.route) {
-                // AccountScreen butuh playerViewModel untuk data card + rank
                 AccountScreen(playerViewModel = playerViewModel)
             }
             composable(Screen.Agents.route) { backStackEntry ->
