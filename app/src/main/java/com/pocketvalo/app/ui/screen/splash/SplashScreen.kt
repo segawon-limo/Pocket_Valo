@@ -20,14 +20,21 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.pocketvalo.app.R
+import com.pocketvalo.app.data.local.AppDatabase
+import com.pocketvalo.app.data.local.MultiAccountTokenStorage
 import com.pocketvalo.app.data.local.TokenStorage
+import com.pocketvalo.app.data.local.entity.AccountEntity
 import com.pocketvalo.app.ui.navigation.Screen
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SplashScreen(navController: NavController) {
     val context      = LocalContext.current
     val tokenStorage = remember { TokenStorage(context) }
+    val multiStorage = remember { MultiAccountTokenStorage(context) }
+    val db           = remember { AppDatabase.getInstance(context) }
 
     var cardImageUrl by remember { mutableStateOf<String?>(null) }
     var imageAlpha   by remember { mutableStateOf(0f) }
@@ -63,6 +70,51 @@ fun SplashScreen(navController: NavController) {
     }
 
     LaunchedEffect(Unit) {
+        // Migrasi: pastikan akun aktif ada di Room DB (untuk user yang login sebelum fitur multi-account)
+        val puuid    = tokenStorage.puuid
+        val username = tokenStorage.username
+        if (puuid != null && username != null) {
+            val parts    = username.split("#")
+            val gameName = parts.getOrNull(0) ?: username
+            val tagLine  = parts.getOrNull(1) ?: ""
+            withContext(Dispatchers.IO) {
+                val existing = db.accountDao().getAccount("$gameName#$tagLine")
+                if (existing == null) {
+                    db.accountDao().upsertAccount(
+                        AccountEntity(
+                            riotId       = "$gameName#$tagLine",
+                            gameName     = gameName,
+                            tagLine      = tagLine,
+                            puuid        = puuid,
+                            region       = tokenStorage.region ?: "ap",
+                            accountLevel = 0,
+                            cardSmall    = null,
+                            lastSearched = System.currentTimeMillis()
+                        )
+                    )
+                }
+            }
+            // Juga pastikan MultiStorage kenal akun ini
+            if (multiStorage.getKnownPuuids().isEmpty()) {
+                val at = tokenStorage.accessToken ?: ""
+                val rt = tokenStorage.refreshToken ?: ""
+                if (at.isNotEmpty() && rt.isNotEmpty()) {
+                    multiStorage.saveAccount(
+                        puuid            = puuid,
+                        accessToken      = at,
+                        idToken          = tokenStorage.idToken ?: "",
+                        refreshToken     = rt,
+                        entitlementToken = tokenStorage.entitlementToken ?: "",
+                        region           = tokenStorage.region ?: "ap",
+                        username         = username,
+                        expiresInSeconds = ((tokenStorage.accessTokenExpiresAt - System.currentTimeMillis()) / 1000)
+                            .toInt().coerceAtLeast(0)
+                    )
+                    multiStorage.activePuuid = puuid
+                }
+            }
+        }
+
         try {
             val uuids = context.resources.openRawResource(R.raw.player_card_uuids)
                 .bufferedReader()

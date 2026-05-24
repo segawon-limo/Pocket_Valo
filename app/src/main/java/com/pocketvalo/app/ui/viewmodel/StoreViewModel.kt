@@ -4,7 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.pocketvalo.app.data.local.AppDatabase
+import com.pocketvalo.app.data.local.MultiAccountTokenStorage
 import com.pocketvalo.app.data.local.TokenStorage
+import com.pocketvalo.app.data.repository.AccountSwitchNotifier
 import com.pocketvalo.app.data.repository.AssetsRepository
 import com.pocketvalo.app.data.repository.AuthResult
 import com.pocketvalo.app.data.repository.RiotAuthRepository
@@ -21,13 +23,14 @@ data class StoreUiState(
     val store: StoreData? = null,
     val error: String? = null,
     val username: String? = null,
-    val sessionExpired: Boolean = false  // signal LoginScreen navigation
+    val sessionExpired: Boolean = false
 )
 
 class StoreViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val tokenStorage   = TokenStorage(application)
-    private val authRepository = RiotAuthRepository(tokenStorage)
+    private val tokenStorage     = TokenStorage(application)
+    private val multiStorage     = MultiAccountTokenStorage(application)
+    private val authRepository   = RiotAuthRepository(tokenStorage, multiStorage)
     private val assetsRepository = AssetsRepository.getInstance()
     private val storeRepository  = StoreRepository(
         tokenStorage   = tokenStorage,
@@ -41,6 +44,21 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
     init {
         _uiState.value = _uiState.value.copy(username = tokenStorage.username)
         loadStore()
+        observeAccountSwitch()
+    }
+
+    private fun observeAccountSwitch() {
+        viewModelScope.launch {
+            // Skip nilai awal (0) — hanya react ke switch yang benar-benar terjadi
+            AccountSwitchNotifier.switchCount.collect { count ->
+                if (count > 0) {
+                    _uiState.value = StoreUiState(
+                        username = tokenStorage.username  // TokenStorage sudah updated saat ini
+                    )
+                    loadStore(forceRefresh = true)
+                }
+            }
+        }
     }
 
     fun loadStore(forceRefresh: Boolean = false) {
@@ -54,7 +72,7 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 is AuthResult.Failure -> {
-                    val errorMsg = result.error.message ?: "Failed to load store"
+                    val errorMsg   = result.error.message ?: "Failed to load store"
                     val needsRelogin = errorMsg.contains("revoked") ||
                             errorMsg.contains("Not logged in")
                     if (needsRelogin) {

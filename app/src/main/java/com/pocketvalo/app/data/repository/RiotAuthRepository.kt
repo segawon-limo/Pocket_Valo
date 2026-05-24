@@ -2,6 +2,7 @@ package com.pocketvalo.app.data.repository
 
 import android.net.Uri
 import com.google.gson.Gson
+import com.pocketvalo.app.data.local.MultiAccountTokenStorage
 import com.pocketvalo.app.data.local.TokenStorage
 import com.pocketvalo.app.data.model.EntitlementResponse
 import com.pocketvalo.app.data.model.PasTokenResponse
@@ -27,7 +28,8 @@ sealed class AuthResult<out T> {
 }
 
 class RiotAuthRepository(
-    private val tokenStorage: TokenStorage
+    private val tokenStorage: TokenStorage,
+    private val multiStorage: MultiAccountTokenStorage? = null
 ) {
 
     private val gson = Gson()
@@ -56,7 +58,19 @@ class RiotAuthRepository(
 
     // ── Full login flow after code obtained ───────────────────────────────────
 
-    suspend fun loginWithCode(code: String): AuthResult<Unit> {
+    data class NewAccountData(
+        val puuid: String,
+        val gameName: String,
+        val tagLine: String,
+        val region: String
+    )
+
+    /**
+     * Tukar auth code dengan token dan ambil info akun dari Riot.
+     * TIDAK set activePuuid — caller yang memutuskan apakah ini login pertama
+     * (set active) atau add-account (simpan saja, jangan switch).
+     */
+    suspend fun loginWithCode(code: String): AuthResult<NewAccountData> {
         return withContext(Dispatchers.IO) {
             try {
                 android.util.Log.d("RiotAuth", "Exchanging code for tokens...")
@@ -69,9 +83,9 @@ class RiotAuthRepository(
                 }
 
                 tokenStorage.saveTokens(
-                    accessToken = tokenResp.accessToken,
-                    idToken = tokenResp.idToken ?: "",
-                    refreshToken = tokenResp.refreshToken,
+                    accessToken      = tokenResp.accessToken,
+                    idToken          = tokenResp.idToken ?: "",
+                    refreshToken     = tokenResp.refreshToken,
                     expiresInSeconds = tokenResp.expiresIn ?: 3600
                 )
 
@@ -85,11 +99,28 @@ class RiotAuthRepository(
 
                 val userInfo = fetchUserInfo()
                     ?: return@withContext AuthResult.Failure(Exception("Failed to fetch user info"))
-                tokenStorage.puuid = userInfo.puuid
-                tokenStorage.username = userInfo.account?.let { "${it.gameName}#${it.tagLine}" }
 
-                android.util.Log.d("RiotAuth", "Login complete: ${tokenStorage.username}, region: ${tokenStorage.region}")
-                AuthResult.Success(Unit)
+                val puuid    = userInfo.puuid    ?: return@withContext AuthResult.Failure(Exception("No puuid in userinfo"))
+                val gameName = userInfo.account?.gameName ?: return@withContext AuthResult.Failure(Exception("No gameName"))
+                val tagLine  = userInfo.account?.tagLine  ?: return@withContext AuthResult.Failure(Exception("No tagLine"))
+
+                tokenStorage.puuid    = puuid
+                tokenStorage.username = "$gameName#$tagLine"
+
+                // Save to MultiAccountTokenStorage — activePuuid TIDAK diset di sini
+                multiStorage?.saveAccount(
+                    puuid            = puuid,
+                    accessToken      = tokenResp.accessToken,
+                    idToken          = tokenResp.idToken ?: "",
+                    refreshToken     = tokenResp.refreshToken,
+                    entitlementToken = entitlement,
+                    region           = region,
+                    username         = "$gameName#$tagLine",
+                    expiresInSeconds = tokenResp.expiresIn ?: 3600
+                )
+
+                android.util.Log.d("RiotAuth", "Login complete: $gameName#$tagLine, region: $region")
+                AuthResult.Success(NewAccountData(puuid, gameName, tagLine, region))
             } catch (e: Exception) {
                 android.util.Log.e("RiotAuth", "loginWithCode exception: ${e::class.simpleName}: ${e.message}")
                 AuthResult.Failure(e)
@@ -124,6 +155,70 @@ class RiotAuthRepository(
 
                 val entitlement = fetchEntitlement()
                 if (entitlement != null) tokenStorage.entitlementToken = entitlement
+
+                // Sync to MultiAccountTokenStorage
+                multiStorage?.let { ms ->
+                    val puuid = tokenStorage.puuid ?: return@let
+                    ms.updateTokens(
+                        puuid            = puuid,
+                        accessToken      = tokenResp.accessToken,
+                        idToken          = tokenResp.idToken,
+                        refreshToken     = tokenResp.refreshToken ?: refreshToken,
+                        entitlementToken = entitlement,
+                        expiresInSeconds = tokenResp.expiresIn ?: 3600
+                    )
+                }
+
+                AuthResult.Success(Unit)
+            } catch (e: Exception) {
+                AuthResult.Failure(e)
+            }
+        }
+    }
+
+    /**
+     * Ensure token valid for a specific puuid (used by switch account flow).
+     * Writes result back to TokenStorage (active session) and MultiAccountTokenStorage.
+     */
+    suspend fun ensureValidTokenForPuuid(puuid: String): AuthResult<Unit> {
+        val ms = multiStorage ?: return AuthResult.Failure(Exception("MultiStorage not available"))
+
+        if (ms.isAccessTokenValid(puuid)) return AuthResult.Success(Unit)
+
+        val refreshToken = ms.getRefreshToken(puuid)
+            ?: return AuthResult.Failure(Exception("No refresh token for $puuid"))
+
+        return withContext(Dispatchers.IO) {
+            try {
+                val tokenResp = refreshWithRefreshToken(refreshToken)
+                    ?: return@withContext AuthResult.Failure(Exception("Token refresh failed"))
+
+                if (tokenResp.accessToken == null) {
+                    ms.removeAccount(puuid)
+                    return@withContext AuthResult.Failure(Exception("Refresh token revoked — re-login required"))
+                }
+
+                val entitlement = fetchEntitlementWithToken(tokenResp.accessToken)
+
+                ms.updateTokens(
+                    puuid            = puuid,
+                    accessToken      = tokenResp.accessToken,
+                    idToken          = tokenResp.idToken,
+                    refreshToken     = tokenResp.refreshToken ?: refreshToken,
+                    entitlementToken = entitlement,
+                    expiresInSeconds = tokenResp.expiresIn ?: 3600
+                )
+
+                // If this is the active account, sync to TokenStorage too
+                if (ms.activePuuid == puuid) {
+                    tokenStorage.saveTokens(
+                        accessToken      = tokenResp.accessToken,
+                        idToken          = tokenResp.idToken ?: tokenStorage.idToken ?: "",
+                        refreshToken     = tokenResp.refreshToken ?: refreshToken,
+                        expiresInSeconds = tokenResp.expiresIn ?: 3600
+                    )
+                    if (entitlement != null) tokenStorage.entitlementToken = entitlement
+                }
 
                 AuthResult.Success(Unit)
             } catch (e: Exception) {
@@ -167,15 +262,17 @@ class RiotAuthRepository(
 
     private fun fetchEntitlement(): String? {
         val accessToken = tokenStorage.accessToken ?: return null
-        val emptyBody = ByteArray(0).toRequestBody()
+        return fetchEntitlementWithToken(accessToken)
+    }
 
+    private fun fetchEntitlementWithToken(accessToken: String): String? {
+        val emptyBody = ByteArray(0).toRequestBody()
         val request = Request.Builder()
             .url("https://entitlements.auth.riotgames.com/api/token/v1")
             .post(emptyBody)
             .header("Authorization", "Bearer $accessToken")
             .header("Content-Type", "application/json")
             .build()
-
         return executeForJson<EntitlementResponse>(request)?.entitlementsToken
     }
 

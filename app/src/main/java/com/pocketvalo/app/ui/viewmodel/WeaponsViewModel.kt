@@ -4,8 +4,10 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.pocketvalo.app.data.local.AppDatabase
+import com.pocketvalo.app.data.local.MultiAccountTokenStorage
 import com.pocketvalo.app.data.local.TokenStorage
 import com.pocketvalo.app.data.model.WeaponData
+import com.pocketvalo.app.data.repository.AccountSwitchNotifier
 import com.pocketvalo.app.data.repository.AssetsRepository
 import com.pocketvalo.app.data.repository.AuthResult
 import com.pocketvalo.app.data.repository.Result
@@ -20,18 +22,18 @@ data class WeaponsUiState(
     val weapons: List<WeaponData> = emptyList(),
     val filteredWeapons: List<WeaponData> = emptyList(),
     val selectedCategory: String? = null,
-    // Map<weaponUuid, equippedSkinUuid> — dari loadout player
     val equippedSkins: Map<String, String> = emptyMap(),
     val error: String? = null
 )
 
 class WeaponsViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository    = AssetsRepository.getInstance()
-    private val tokenStorage  = TokenStorage(application)
-    private val storeRepo     = StoreRepository(
+    private val repository   = AssetsRepository.getInstance()
+    private val tokenStorage = TokenStorage(application)
+    private val multiStorage = MultiAccountTokenStorage(application)
+    private val storeRepo    = StoreRepository(
         tokenStorage   = tokenStorage,
-        authRepository = RiotAuthRepository(tokenStorage),
+        authRepository = RiotAuthRepository(tokenStorage, multiStorage),
         storeDao       = AppDatabase.getInstance(application).storeDao()
     )
 
@@ -43,6 +45,19 @@ class WeaponsViewModel(application: Application) : AndroidViewModel(application)
     init {
         loadWeaponsIfNeeded()
         fetchEquippedSkins()
+        observeAccountSwitch()
+    }
+
+    private fun observeAccountSwitch() {
+        viewModelScope.launch {
+            AccountSwitchNotifier.switchCount.collect { count ->
+                if (count > 0) {
+                    // Clear equipped skins untuk akun lama, fetch ulang untuk akun baru
+                    _uiState.value = _uiState.value.copy(equippedSkins = emptyMap())
+                    fetchEquippedSkins()
+                }
+            }
+        }
     }
 
     fun loadWeaponsIfNeeded() {
@@ -72,14 +87,14 @@ class WeaponsViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun fetchEquippedSkins() {
+    fun fetchEquippedSkins() {
         if (!tokenStorage.isLoggedIn) return
         viewModelScope.launch {
             when (val result = storeRepo.fetchEquippedSkins()) {
                 is AuthResult.Success -> {
                     _uiState.value = _uiState.value.copy(equippedSkins = result.data)
                 }
-                is AuthResult.Failure -> { /* silent fail — default skin icons masih muncul */ }
+                is AuthResult.Failure -> { /* silent fail */ }
             }
         }
     }

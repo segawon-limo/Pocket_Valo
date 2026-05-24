@@ -121,7 +121,7 @@ fun HomeScreen(
                                         AsyncImage(
                                             model              = uiState.currentRankIconUrl,
                                             contentDescription = "Rank",
-                                            modifier           = Modifier.size(48.dp)
+                                            modifier           = Modifier.size(50.dp)
                                         )
                                     }
                                     val rankName = uiState.currentRankName
@@ -129,19 +129,20 @@ fun HomeScreen(
                                         Text(
                                             text      = rankName,
                                             color     = Color(0xFF9BA3AF),
-                                            fontSize  = 10.sp,
-                                            textAlign = TextAlign.Center
-                                        )
-                                    }
-                                    if (uiState.currentRR != null) {
-                                        Text(
-                                            text      = "${uiState.currentRR} RR",
-                                            color     = Color.White,
-                                            fontSize  = 11.sp,
+                                            fontSize  = 17.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             textAlign = TextAlign.Center
                                         )
                                     }
+//                                    if (uiState.currentRR != null) {
+//                                        Text(
+//                                            text      = "${uiState.currentRR} RR",
+//                                            color     = Color.White,
+//                                            fontSize  = 11.sp,
+//                                            fontWeight = FontWeight.SemiBold,
+//                                            textAlign = TextAlign.Center
+//                                        )
+//                                    }
                                 }
                             }
                         }

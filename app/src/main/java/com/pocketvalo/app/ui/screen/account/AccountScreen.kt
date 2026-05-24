@@ -5,10 +5,18 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,11 +30,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.pocketvalo.app.R
+import com.pocketvalo.app.data.local.MultiAccountTokenStorage
+import com.pocketvalo.app.data.local.entity.AccountEntity
 import com.pocketvalo.app.ui.viewmodel.AccountUiState
 import com.pocketvalo.app.ui.viewmodel.AccountViewModel
 import com.pocketvalo.app.ui.viewmodel.PlayerStats
@@ -37,13 +48,24 @@ private val CARD_HEIGHT         = (245 * 640f / 268f).dp
 private val PNG_RENDERED_WIDTH  = 275.dp
 private val PNG_RENDERED_HEIGHT = (275 * 1080f / 478f).dp
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountScreen(
     playerViewModel: PlayerViewModel,
-    accountViewModel: AccountViewModel = viewModel()
+    accountViewModel: AccountViewModel = viewModel(),
+    onAddAccount: () -> Unit = {}
 ) {
+    val context       = androidx.compose.ui.platform.LocalContext.current
+    val multiStorage  = remember { MultiAccountTokenStorage(context) }
+
     val uiState       by accountViewModel.uiState.collectAsState()
     val playerUiState by playerViewModel.uiState.collectAsState()
+
+    // Refresh setiap kali AccountScreen di-enter — pastikan username & activePuuid sinkron
+    // setelah switch account (AccountViewModel tidak re-create, jadi perlu manual refresh)
+    LaunchedEffect(Unit) {
+        accountViewModel.refresh()
+    }
 
     LaunchedEffect(playerUiState.accountData, playerUiState.rawMatchHistory, playerUiState.matchHistory) {
         val account  = playerUiState.accountData
@@ -71,14 +93,258 @@ fun AccountScreen(
             .fillMaxSize()
             .background(Color(0xFF0F1923))
     ) {
-        PlayerCardContent(uiState = uiState)
+        PlayerCardContent(
+            uiState      = uiState,
+            onSwitchClick = { accountViewModel.showAccountSheet() }
+        )
+    }
+
+    // Account switcher bottom sheet
+    // Baca activePuuid langsung dari multiStorage — lebih reliable dari uiState.puuid yang bisa stale
+    val activePuuid = multiStorage.activePuuid ?: uiState.puuid
+
+    if (uiState.showAccountSheet) {
+        ModalBottomSheet(
+            onDismissRequest  = { accountViewModel.dismissAccountSheet() },
+            containerColor    = Color(0xFF1A2332),
+            scrimColor        = Color.Black.copy(alpha = 0.6f),
+            shape             = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+        ) {
+            AccountSwitcherSheet(
+                uiState          = uiState,
+                activePuuid      = activePuuid,
+                onSwitch         = { accountViewModel.switchToAccount(it) },
+                onRemove         = { accountViewModel.removeAccount(it) },
+                onAddAccount     = {
+                    accountViewModel.dismissAccountSheet()
+                    onAddAccount()
+                }
+            )
+        }
+    }
+}
+
+// ── Account switcher sheet ────────────────────────────────────────────────────
+
+@Composable
+private fun AccountSwitcherSheet(
+    uiState: AccountUiState,
+    activePuuid: String?,
+    onSwitch: (AccountEntity) -> Unit,
+    onRemove: (AccountEntity) -> Unit,
+    onAddAccount: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 32.dp)
+    ) {
+        // Handle
+        Box(
+            modifier = Modifier
+                .width(40.dp)
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color(0xFF3A4A5C))
+                .align(Alignment.CenterHorizontally)
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Text(
+            text       = "ACCOUNTS",
+            color      = Color(0xFF9BA3AF),
+            fontSize   = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.5.sp
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (uiState.switchError != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF3A0515), RoundedCornerShape(8.dp))
+                    .padding(12.dp)
+            ) {
+                Text(text = uiState.switchError, color = Color(0xFFFF4655), fontSize = 12.sp)
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        if (uiState.isSwitching) {
+            Box(
+                modifier         = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier    = Modifier.size(20.dp),
+                        color       = Color(0xFFFF4655),
+                        strokeWidth = 2.dp
+                    )
+                    Text("Switching account...", color = Color(0xFF9BA3AF), fontSize = 13.sp)
+                }
+            }
+        } else {
+            // Account list
+            uiState.savedAccounts.forEach { account ->
+                val isActive = account.puuid == activePuuid
+                AccountRow(
+                    account  = account,
+                    isActive = isActive,
+                    onSwitch = { if (!isActive) onSwitch(account) },
+                    onRemove = { if (!isActive) onRemove(account) }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Add account button
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { onAddAccount() }
+                .background(Color(0xFF0F1923))
+                .padding(16.dp),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier         = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF1A2332)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector        = Icons.Default.Add,
+                    contentDescription = "Add account",
+                    tint               = Color(0xFFFF4655),
+                    modifier           = Modifier.size(20.dp)
+                )
+            }
+            Text(
+                text       = "Add Account",
+                color      = Color(0xFFFF4655),
+                fontSize   = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+@Composable
+private fun AccountRow(
+    account: AccountEntity,
+    isActive: Boolean,
+    onSwitch: () -> Unit,
+    onRemove: () -> Unit
+) {
+    var showConfirm by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (isActive) Color(0xFF1E3A2E) else Color(0xFF0F1923)
+            )
+            .clickable(enabled = !isActive) { onSwitch() }
+            .padding(12.dp),
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Avatar / card image
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF1A2332))
+        ) {
+            if (account.cardSmall != null) {
+                AsyncImage(
+                    model              = account.cardSmall,
+                    contentDescription = null,
+                    modifier           = Modifier.fillMaxSize(),
+                    contentScale       = ContentScale.Crop
+                )
+            }
+        }
+
+        // Name + region
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text       = account.riotId,
+                color      = if (isActive) Color(0xFF4ADE80) else Color.White,
+                fontSize   = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines   = 1,
+                overflow   = TextOverflow.Ellipsis
+            )
+            Text(
+                text     = account.region.uppercase(),
+                color    = Color(0xFF6B7280),
+                fontSize = 11.sp
+            )
+        }
+
+        // Active checkmark or remove button
+        if (isActive) {
+            Icon(
+                imageVector        = Icons.Default.Check,
+                contentDescription = "Active",
+                tint               = Color(0xFF4ADE80),
+                modifier           = Modifier.size(18.dp)
+            )
+        } else {
+            if (showConfirm) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = { showConfirm = false },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("Cancel", color = Color(0xFF9BA3AF), fontSize = 12.sp)
+                    }
+                    TextButton(
+                        onClick = { onRemove(); showConfirm = false },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("Remove", color = Color(0xFFFF4655), fontSize = 12.sp)
+                    }
+                }
+            } else {
+                IconButton(
+                    onClick  = { showConfirm = true },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector        = Icons.Default.Delete,
+                        contentDescription = "Remove account",
+                        tint               = Color(0xFF4A5568),
+                        modifier           = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
     }
 }
 
 // ── Player card + stats ───────────────────────────────────────────────────────
 
 @Composable
-private fun PlayerCardContent(uiState: AccountUiState) {
+private fun PlayerCardContent(
+    uiState: AccountUiState,
+    onSwitchClick: () -> Unit
+) {
     Column(
         modifier            = Modifier
             .fillMaxSize()
@@ -235,7 +501,23 @@ private fun PlayerCardContent(uiState: AccountUiState) {
             }
         }
 
-        Spacer(modifier = Modifier.height(28.dp))
+        // Switch account button
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedButton(
+            onClick  = onSwitchClick,
+            shape    = RoundedCornerShape(8.dp),
+            colors   = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF9BA3AF)),
+            border   = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2A3A4A)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text       = "Switch Account",
+                fontSize   = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         // ── Stats section ─────────────────────────────────────────────────────
         if (uiState.stats != null && uiState.stats.totalMatches > 0) {
@@ -413,7 +695,6 @@ private fun MapCard(stats: PlayerStats, modifier: Modifier) {
             .background(Color(0xFF1A2332), RoundedCornerShape(10.dp))
             .clip(RoundedCornerShape(10.dp))
     ) {
-        // Map image — right side background
         if (stats.mostPlayedMapImageUrl != null) {
             AsyncImage(
                 model              = stats.mostPlayedMapImageUrl,
@@ -422,7 +703,6 @@ private fun MapCard(stats: PlayerStats, modifier: Modifier) {
                 contentScale       = ContentScale.Crop
             )
         }
-        // Dark overlay supaya teks tetap terbaca
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -437,9 +717,7 @@ private fun MapCard(stats: PlayerStats, modifier: Modifier) {
                 )
         )
         Column(
-            modifier            = Modifier
-                .align(Alignment.CenterStart)
-                .padding(12.dp),
+            modifier            = Modifier.align(Alignment.CenterStart).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(text = "TOP MAP", color = Color(0xFF9BA3AF), fontSize = 9.sp, letterSpacing = 1.5.sp)

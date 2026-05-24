@@ -161,6 +161,24 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * Reset state dan load data untuk akun baru (dipanggil saat switch account).
+     */
+    /**
+     * Reset state tanpa trigger load — dipakai saat switch account sebelum navigate ke LoadingScreen.
+     * LoadingScreen yang akan call loadPlayerData() lewat flow normal-nya.
+     */
+    fun resetForSwitch() {
+        activeRiotId = null
+        _uiState.value = PlayerUiState()
+    }
+
+    fun resetAndLoad(name: String, tag: String) {
+        activeRiotId = null
+        _uiState.value = PlayerUiState()   // clear semua state
+        loadPlayerData(name, tag)
+    }
+
     fun deleteAccount(riotId: String) {
         viewModelScope.launch {
             repository.deleteAccount(riotId)

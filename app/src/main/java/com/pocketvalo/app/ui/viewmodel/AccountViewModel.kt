@@ -4,7 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.pocketvalo.app.data.local.AppDatabase
+import com.pocketvalo.app.data.local.MultiAccountTokenStorage
 import com.pocketvalo.app.data.local.TokenStorage
+import com.pocketvalo.app.data.local.entity.AccountEntity
 import com.pocketvalo.app.data.local.entity.MatchEntity
 import com.pocketvalo.app.data.model.MatchData
 import com.pocketvalo.app.data.repository.AssetsRepository
@@ -23,7 +25,7 @@ data class PlayerStats(
     val avgDeaths: Float        = 0f,
     val avgAssists: Float       = 0f,
     val kdRatio: Float          = 0f,
-    val headshotPct: Float      = 0f,   // 0.0–1.0
+    val headshotPct: Float      = 0f,
     val bodyshotPct: Float      = 0f,
     val legshotPct: Float       = 0f,
     val mostPlayedAgent: String?    = null,
@@ -49,19 +51,28 @@ data class AccountUiState(
     val titleText: String? = null,
     val isTitleLoading: Boolean = false,
     val stats: PlayerStats? = null,
-    val error: String? = null
+    val error: String? = null,
+    // Switch account
+    val savedAccounts: List<AccountEntity> = emptyList(),
+    val showAccountSheet: Boolean = false,
+    val isSwitching: Boolean = false,
+    val switchError: String? = null
 )
 
 class AccountViewModel(application: Application) : AndroidViewModel(application) {
 
     private val tokenStorage = TokenStorage(application)
+    private val multiStorage = MultiAccountTokenStorage(application)
     private val db           = AppDatabase.getInstance(application)
-    private val authRepo     = RiotAuthRepository(tokenStorage)
+    private val authRepo     = RiotAuthRepository(tokenStorage, multiStorage)
     private val storeRepo    = StoreRepository(tokenStorage, authRepo, db.storeDao())
     private val assetsRepo   = AssetsRepository.getInstance()
 
     private val _uiState = MutableStateFlow(AccountUiState())
     val uiState: StateFlow<AccountUiState> = _uiState
+
+    // Callback dipanggil saat token sudah di-swap — AppNavigation navigate ke LoadingScreen
+    var onNavigateToLoading: (() -> Unit)? = null
 
     init {
         _uiState.value = _uiState.value.copy(
@@ -69,7 +80,108 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
             puuid    = tokenStorage.puuid
         )
         fetchTitle()
+        observeSavedAccounts()
+
+        // Migrate active account ke MultiStorage jika belum ada
+        migrateActiveAccountIfNeeded()
     }
+
+    private fun migrateActiveAccountIfNeeded() {
+        val puuid = tokenStorage.puuid ?: return
+        if (multiStorage.getKnownPuuids().isEmpty() || multiStorage.getRefreshToken(puuid) == null) {
+            val accessToken  = tokenStorage.accessToken ?: return
+            val refreshToken = tokenStorage.refreshToken ?: return
+            val entitlement  = tokenStorage.entitlementToken ?: return
+            val region       = tokenStorage.region ?: return
+            val username     = tokenStorage.username ?: return
+            multiStorage.saveAccount(
+                puuid            = puuid,
+                accessToken      = accessToken,
+                idToken          = tokenStorage.idToken ?: "",
+                refreshToken     = refreshToken,
+                entitlementToken = entitlement,
+                region           = region,
+                username         = username,
+                expiresInSeconds = ((tokenStorage.accessTokenExpiresAt - System.currentTimeMillis()) / 1000)
+                    .toInt().coerceAtLeast(0)
+            )
+            if (multiStorage.activePuuid == null) multiStorage.activePuuid = puuid
+        }
+    }
+
+    private fun observeSavedAccounts() {
+        viewModelScope.launch {
+            db.accountDao().getAllAccounts().collect { accounts ->
+                _uiState.value = _uiState.value.copy(savedAccounts = accounts)
+            }
+        }
+    }
+
+    // ── Sheet control ─────────────────────────────────────────────────────────
+
+    fun showAccountSheet()  { _uiState.value = _uiState.value.copy(showAccountSheet = true,  switchError = null) }
+    fun dismissAccountSheet() { _uiState.value = _uiState.value.copy(showAccountSheet = false) }
+
+    // ── Switch account ────────────────────────────────────────────────────────
+
+    fun switchToAccount(account: AccountEntity) {
+        if (account.puuid == tokenStorage.puuid) {
+            dismissAccountSheet()
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSwitching = true, switchError = null)
+
+            // Pastikan token akun target masih valid
+            val tokenResult = authRepo.ensureValidTokenForPuuid(account.puuid)
+            if (tokenResult is AuthResult.Failure) {
+                _uiState.value = _uiState.value.copy(
+                    isSwitching = false,
+                    switchError = "Session expired for ${account.gameName}. Please re-add this account."
+                )
+                return@launch
+            }
+
+            // Commit switch: tulis token akun target ke TokenStorage aktif
+            val puuid = account.puuid
+            multiStorage.activePuuid = puuid
+            tokenStorage.puuid    = puuid
+            tokenStorage.region   = multiStorage.getRegion(puuid)
+            tokenStorage.username = multiStorage.getUsername(puuid)
+            multiStorage.getAccessToken(puuid)?.let { at ->
+                tokenStorage.saveTokens(
+                    accessToken      = at,
+                    idToken          = multiStorage.getIdToken(puuid) ?: "",
+                    refreshToken     = multiStorage.getRefreshToken(puuid) ?: "",
+                    expiresInSeconds = ((multiStorage.getAccessExpiresAt(puuid) - System.currentTimeMillis()) / 1000)
+                        .toInt().coerceAtLeast(0)
+                )
+            }
+            multiStorage.getEntitlementToken(puuid)?.let { tokenStorage.entitlementToken = it }
+
+            // Tutup sheet
+            _uiState.value = _uiState.value.copy(
+                isSwitching      = false,
+                showAccountSheet = false
+            )
+
+            // Beritahu Store & Weapons untuk reload data akun baru
+            com.pocketvalo.app.data.repository.AccountSwitchNotifier.notifySwitch()
+
+            // Navigate ke LoadingScreen — semua data di-fetch ulang dari awal
+            onNavigateToLoading?.invoke()
+        }
+    }
+
+    fun removeAccount(account: AccountEntity) {
+        viewModelScope.launch {
+            multiStorage.removeAccount(account.puuid)
+            db.accountDao().deleteAccount(account.riotId)
+        }
+    }
+
+    // ── setPlayerData (unchanged from before) ─────────────────────────────────
 
     fun setPlayerData(
         playerCardUrl: String?,
@@ -110,7 +222,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         val avgAssists = matchHistory.map { it.assists }.average().toFloat()
         val kdRatio    = if (avgDeaths > 0) avgKills / avgDeaths else avgKills
 
-        // Shot distribution dari rawMatchHistory
         val username = tokenStorage.username
         var totalHeadshots = 0
         var totalBodyshots = 0
@@ -133,22 +244,17 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         val bodyshotPct = if (totalShots > 0) totalBodyshots.toFloat() / totalShots else 0f
         val legshotPct  = (1f - headshotPct - bodyshotPct).coerceAtLeast(0f)
 
-        // Most played agent
-        val agentCounts  = matchHistory.groupingBy { it.agentName }.eachCount()
-        val topAgentName = agentCounts.maxByOrNull { it.value }?.key
-        val topAgentUrl  = matchHistory.firstOrNull { it.agentName == topAgentName }?.agentPortraitUrl
+        val agentCounts   = matchHistory.groupingBy { it.agentName }.eachCount()
+        val topAgentName  = agentCounts.maxByOrNull { it.value }?.key
+        val topAgentUrl   = matchHistory.firstOrNull { it.agentName == topAgentName }?.agentPortraitUrl
         val topAgentGames = agentCounts[topAgentName] ?: 0
 
-        // Most played map + image + win/loss
-        val mapCounts   = matchHistory.groupingBy { it.map }.eachCount()
-        val topMapName  = mapCounts.maxByOrNull { it.value }?.key
-        val mapMatches  = matchHistory.filter { it.map == topMapName }
-        val mapWins     = mapMatches.count { it.hasWon }
-        val mapLosses   = mapMatches.size - mapWins
-        // Lookup map image dari AssetsRepository cache (key = displayName uppercase)
-        val mapImageUrl = topMapName?.let { name ->
-            maps[name.uppercase()]?.listViewIcon
-        }
+        val mapCounts  = matchHistory.groupingBy { it.map }.eachCount()
+        val topMapName = mapCounts.maxByOrNull { it.value }?.key
+        val mapMatches = matchHistory.filter { it.map == topMapName }
+        val mapWins    = mapMatches.count { it.hasWon }
+        val mapLosses  = mapMatches.size - mapWins
+        val mapImageUrl = topMapName?.let { maps[it.uppercase()]?.listViewIcon }
 
         return PlayerStats(
             totalMatches          = total,
@@ -181,7 +287,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun fetchTitle() {
+    fun fetchTitle() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isTitleLoading = true)
             when (val result = storeRepo.fetchPlayerTitle()) {
@@ -204,10 +310,26 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /**
+     * Sync uiState dengan TokenStorage aktif saat ini.
+     * Dipanggil setiap kali AccountScreen di-enter — penting setelah switch account
+     * karena AccountViewModel tidak re-create (shared ViewModel).
+     */
     fun refresh() {
+        val activePuuid = multiStorage.activePuuid ?: tokenStorage.puuid
         _uiState.value = _uiState.value.copy(
-            username = tokenStorage.username,
-            puuid    = tokenStorage.puuid
+            username  = tokenStorage.username,
+            puuid     = activePuuid,
+            // Reset data akun lama supaya tidak tampil stale
+            playerCardUrl            = null,
+            accountLevel             = null,
+            levelBorderUrl           = null,
+            levelNumberAppearanceUrl = null,
+            rankName                 = null,
+            rankIconUrl              = null,
+            currentRR                = null,
+            titleText                = null,
+            stats                    = null
         )
         fetchTitle()
     }

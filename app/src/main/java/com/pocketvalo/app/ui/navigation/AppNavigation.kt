@@ -13,9 +13,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -38,6 +36,7 @@ import com.pocketvalo.app.ui.screen.match.MatchScreen
 import com.pocketvalo.app.ui.screen.splash.SplashScreen
 import com.pocketvalo.app.ui.screen.store.StoreScreen
 import com.pocketvalo.app.ui.screen.weapons.WeaponsScreen
+import com.pocketvalo.app.ui.viewmodel.AccountViewModel
 import com.pocketvalo.app.ui.viewmodel.AgentsViewModel
 import com.pocketvalo.app.ui.viewmodel.PlayerViewModel
 import com.pocketvalo.app.ui.viewmodel.StoreViewModel
@@ -46,6 +45,7 @@ import com.pocketvalo.app.ui.viewmodel.WeaponsViewModel
 sealed class Screen(val route: String) {
     object Splash      : Screen("splash")
     object Login       : Screen("login")
+    object AddAccount  : Screen("add_account")   // Login for adding extra account
     object Loading     : Screen("loading")
     object Input       : Screen("input")
     object Home        : Screen("home")
@@ -71,8 +71,20 @@ data class BottomNavItem(
 fun AppNavigation(
     navController: NavHostController = rememberNavController()
 ) {
-    // PlayerViewModel shared across Home, Input, Match, Account
     val playerViewModel: PlayerViewModel = viewModel()
+    val accountViewModel: AccountViewModel = viewModel()
+
+    // Wire switch-account navigation: setelah token di-swap, reset PlayerViewModel
+    // lalu navigate ke LoadingScreen agar semua data di-fetch ulang
+    LaunchedEffect(Unit) {
+        accountViewModel.onNavigateToLoading = {
+            playerViewModel.resetForSwitch()
+            navController.navigate(Screen.Loading.route) {
+                // Hapus semua back stack sampai Home, buat Loading jadi entry baru
+                popUpTo(Screen.Home.route) { inclusive = false }
+            }
+        }
+    }
 
     val screensWithBottomNav = listOf(
         Screen.Home.route,
@@ -100,6 +112,13 @@ fun AppNavigation(
         ) {
             composable(Screen.Splash.route)  { SplashScreen(navController) }
             composable(Screen.Login.route)   { LoginScreen(navController) }
+            composable(Screen.AddAccount.route) {
+                // Login screen untuk add account baru — simpan tanpa switch, balik ke Account
+                LoginScreen(
+                    navController = navController,
+                    isAddAccount  = true
+                )
+            }
             composable(Screen.Loading.route) { LoadingScreen(navController, playerViewModel) }
             composable(Screen.Input.route)   { InputScreen(navController, playerViewModel) }
             composable(Screen.Home.route)    { HomeScreen(navController, playerViewModel) }
@@ -112,7 +131,11 @@ fun AppNavigation(
                 MatchScreen(matchId, navController, playerViewModel)
             }
             composable(Screen.Account.route) {
-                AccountScreen(playerViewModel = playerViewModel)
+                AccountScreen(
+                    playerViewModel  = playerViewModel,
+                    accountViewModel = accountViewModel,
+                    onAddAccount     = { navController.navigate(Screen.AddAccount.route) }
+                )
             }
             composable(Screen.Agents.route) { backStackEntry ->
                 val agentsViewModel: AgentsViewModel = viewModel(backStackEntry)

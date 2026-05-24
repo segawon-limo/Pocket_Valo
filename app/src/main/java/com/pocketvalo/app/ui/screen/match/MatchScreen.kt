@@ -139,10 +139,23 @@ fun MatchScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(resultText, color = resultColor, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                    // Tim player selalu di kiri, lawan di kanan
+                    val myRounds  = if (playerOnRed) redRounds  else blueRounds
+                    val oppRounds = if (playerOnRed) blueRounds else redRounds
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("$redRounds", color = if (redWon) Color(0xFF4ADE80) else Color(0xFFFF4655), fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text       = "$myRounds",
+                            color      = if (playerWon) Color(0xFF4ADE80) else Color(0xFFFF4655),
+                            fontSize   = 28.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                         Text("  –  ", color = Color(0xFF9BA3AF), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Text("$blueRounds", color = if (blueWon) Color(0xFF4ADE80) else Color(0xFFFF4655), fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text       = "$oppRounds",
+                            color      = if (!playerWon) Color(0xFF4ADE80) else Color(0xFFFF4655),
+                            fontSize   = 28.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }

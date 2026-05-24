@@ -2,7 +2,9 @@ package com.pocketvalo.app.ui.screen.store
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
+import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
@@ -23,7 +25,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 fun RiotAuthWebView(
     authUrl: String,
     onCodeReceived: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    clearSession: Boolean = false   // true saat add-account, false saat login biasa
 ) {
     var isLoading by remember { mutableStateOf(true) }
 
@@ -41,22 +44,18 @@ fun RiotAuthWebView(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onDismiss) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = "Close",
-                    tint = Color.White
-                )
+                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
             }
             Text(
-                text = "Login with Riot",
-                color = Color.White,
+                text     = "Login with Riot",
+                color    = Color.White,
                 fontSize = 16.sp,
                 modifier = Modifier.weight(1f)
             )
             if (isLoading) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    color = Color(0xFFFF4655),
+                    modifier    = Modifier.size(20.dp),
+                    color       = Color(0xFFFF4655),
                     strokeWidth = 2.dp
                 )
                 Spacer(modifier = Modifier.width(12.dp))
@@ -66,20 +65,27 @@ fun RiotAuthWebView(
         // ── WebView ───────────────────────────────────────────────────────────
         AndroidView(
             modifier = Modifier.fillMaxSize(),
-            factory = { context ->
+            factory  = { context ->
                 WebView(context).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
-                    settings.userAgentString =
+                    settings.userAgentString   =
                         "Mozilla/5.0 (Linux; Android 10; Pixel 6) AppleWebKit/537.36 " +
                                 "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
+                    // Clear cookies dan storage saat add-account
+                    // supaya Riot tidak auto-login dengan akun yang sudah masuk
+                    if (clearSession) {
+                        CookieManager.getInstance().removeAllCookies(null)
+                        CookieManager.getInstance().flush()
+                        clearCache(true)
+                        clearHistory()
+                        WebStorage.getInstance().deleteAllData()
+                        android.util.Log.d("RiotAuthWebView", "Session cleared for add-account flow")
+                    }
+
                     webViewClient = object : WebViewClient() {
-                        override fun onPageStarted(
-                            view: WebView?,
-                            url: String?,
-                            favicon: Bitmap?
-                        ) {
+                        override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                             super.onPageStarted(view, url, favicon)
                             isLoading = true
                         }
@@ -96,16 +102,13 @@ fun RiotAuthWebView(
                             val url = request?.url?.toString() ?: return false
                             android.util.Log.d("RiotAuthWebView", "URL: $url")
 
-                            // Intercept redirect before WebView loads it
                             if (url.startsWith("http://localhost/redirect")) {
                                 val rawCode = request.url.getQueryParameter("code")
-                                val code = rawCode?.let {
+                                val code    = rawCode?.let {
                                     java.net.URLDecoder.decode(it, "UTF-8")
                                 }
                                 android.util.Log.d("RiotAuthWebView", "Code received: ${code?.take(10)}...")
-                                if (code != null) {
-                                    onCodeReceived(code)
-                                }
+                                if (code != null) onCodeReceived(code)
                                 return true
                             }
                             return false
