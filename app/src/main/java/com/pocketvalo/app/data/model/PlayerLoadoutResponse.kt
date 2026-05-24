@@ -4,7 +4,13 @@ import com.google.gson.annotations.SerializedName
 
 // ── Riot PVP API — /personalization/v2/players/{puuid}/playerloadout ──────────
 data class PlayerLoadoutResponse(
-    @SerializedName("Identity") val identity: PlayerIdentity?
+    @SerializedName("Identity") val identity: PlayerIdentity?,
+    @SerializedName("Guns") val guns: List<GunLoadout>?
+)
+
+data class GunLoadout(
+    @SerializedName("ID") val weaponId: String,       // weapon UUID (matches WeaponData.uuid)
+    @SerializedName("SkinID") val skinId: String       // equipped skin UUID (matches SkinData.uuid)
 )
 
 data class PlayerIdentity(

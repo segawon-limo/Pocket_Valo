@@ -110,7 +110,10 @@ fun WeaponsScreen(
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
                     items(uiState.filteredWeapons) { weapon ->
-                        WeaponCard(weapon = weapon)
+                        WeaponCard(
+                            weapon        = weapon,
+                            equippedSkins = uiState.equippedSkins
+                        )
                     }
                 }
             }
@@ -119,7 +122,14 @@ fun WeaponsScreen(
 }
 
 @Composable
-fun WeaponCard(weapon: WeaponData) {
+fun WeaponCard(weapon: WeaponData, equippedSkins: Map<String, String> = emptyMap()) {
+    // Cari skin yang sedang dipakai — match by skinUuid dari loadout
+    val equippedSkinUuid = equippedSkins[weapon.uuid]
+    val equippedSkin     = weapon.skins.firstOrNull { it.uuid == equippedSkinUuid }
+    // Ambil displayIcon dari skin yang equipped — fallback ke default weapon icon
+    val equippedIcon     = equippedSkin?.levels?.firstOrNull { it.displayIcon != null }?.displayIcon
+        ?: equippedSkin?.chromas?.firstOrNull()?.fullRender
+    val displayIcon      = equippedIcon ?: weapon.displayIcon
     val category = weapon.category.substringAfterLast("::")
     val cost = weapon.shopData?.cost
 
@@ -142,14 +152,14 @@ fun WeaponCard(weapon: WeaponData) {
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                if (weapon.displayIcon != null) {
+                if (displayIcon != null) {
                     AsyncImage(
-                        model = weapon.displayIcon,
+                        model              = displayIcon,
                         contentDescription = weapon.displayName,
-                        modifier = Modifier
+                        modifier           = Modifier
                             .fillMaxWidth(0.85f)
                             .height(80.dp),
-                        contentScale = ContentScale.Fit
+                        contentScale       = ContentScale.Fit
                     )
                 }
             }
@@ -173,16 +183,24 @@ fun WeaponCard(weapon: WeaponData) {
                 ) {
                     Column {
                         Text(
-                            text = weapon.displayName,
-                            color = Color.White,
-                            fontSize = 16.sp,
+                            text       = weapon.displayName,
+                            color      = Color.White,
+                            fontSize   = 16.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = category,
+                            text  = category,
                             color = Color(0xFFFF4655),
                             fontSize = 12.sp
                         )
+                        // Nama skin yang sedang dipakai
+                        if (equippedSkin != null) {
+                            Text(
+                                text     = equippedSkin.displayName,
+                                color    = Color(0xFF9BA3AF),
+                                fontSize = 11.sp
+                            )
+                        }
                     }
 
                     // Credits badge

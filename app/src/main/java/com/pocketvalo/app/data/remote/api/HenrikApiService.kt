@@ -1,6 +1,7 @@
 package com.pocketvalo.app.data.remote.api
 
 import com.pocketvalo.app.data.model.AccountResponse
+import com.pocketvalo.app.data.model.MMRResponse
 import com.pocketvalo.app.data.model.MatchDetailResponse
 import com.pocketvalo.app.data.model.MatchHistoryResponse
 import retrofit2.Response
@@ -26,6 +27,14 @@ interface HenrikApiService {
         @Query("size") size: Int = 30,
         @Header("Authorization") apiKey: String
     ): Response<MatchHistoryResponse>
+
+    @GET("valorant/v2/mmr/{region}/{name}/{tag}")
+    suspend fun getMmr(
+        @Path("region") region: String,
+        @Path("name")   name: String,
+        @Path("tag")    tag: String,
+        @Header("Authorization") apiKey: String
+    ): Response<MMRResponse>
 
     @GET("valorant/v2/match/{matchId}")
     suspend fun getMatchDetail(

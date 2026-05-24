@@ -9,11 +9,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -61,31 +63,93 @@ fun HomeScreen(
                         .padding(16.dp)
                 ) {
                     item {
-                        Text(
-                            text = "Welcome back",
-                            color = Color(0xFF9BA3AF),
-                            fontSize = 14.sp
-                        )
-                        Text(
-                            text = if (uiState.accountData != null)
-                                "${uiState.accountData!!.name}#${uiState.accountData!!.tag}"
-                            else "PlayerName#TAG",
-                            color = Color.White,
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        uiState.accountData?.let {
-                            Text(
-                                text = "Level ${it.accountLevel} · ${it.region.uppercase()}",
-                                color = Color(0xFF9BA3AF),
-                                fontSize = 14.sp
-                            )
+                        Row(
+                            verticalAlignment     = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier              = Modifier.padding(bottom = 4.dp)
+                        ) {
+                            // Player card display icon
+                            if (uiState.playerCardSmallUrl != null) {
+                                AsyncImage(
+                                    model              = uiState.playerCardSmallUrl,
+                                    contentDescription = "Player Card",
+                                    modifier           = Modifier
+                                        .size(52.dp)
+                                        .clip(RoundedCornerShape(6.dp)),
+                                    contentScale       = ContentScale.Crop
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(52.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF1A2332))
+                                )
+                            }
+
+                            // Nama + level
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text     = "Welcome back",
+                                    color    = Color(0xFF9BA3AF),
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text       = if (uiState.accountData != null)
+                                        "${uiState.accountData!!.name}#${uiState.accountData!!.tag}"
+                                    else "PlayerName#TAG",
+                                    color      = Color.White,
+                                    fontSize   = 24.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                uiState.accountData?.let {
+                                    Text(
+                                        text     = "Level ${it.accountLevel} · ${it.region.uppercase()}",
+                                        color    = Color(0xFF9BA3AF),
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
+
+                            // Current rank — kanan header
+                            if (uiState.currentRankIconUrl != null || uiState.currentRankName != null) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    if (uiState.currentRankIconUrl != null) {
+                                        AsyncImage(
+                                            model              = uiState.currentRankIconUrl,
+                                            contentDescription = "Rank",
+                                            modifier           = Modifier.size(48.dp)
+                                        )
+                                    }
+                                    val rankName = uiState.currentRankName
+                                    if (rankName != null) {
+                                        Text(
+                                            text      = rankName,
+                                            color     = Color(0xFF9BA3AF),
+                                            fontSize  = 10.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                    if (uiState.currentRR != null) {
+                                        Text(
+                                            text      = "${uiState.currentRR} RR",
+                                            color     = Color.White,
+                                            fontSize  = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
                         }
                         Spacer(modifier = Modifier.height(24.dp))
                         Text(
-                            text = "Recent Matches",
-                            color = Color.White,
-                            fontSize = 18.sp,
+                            text       = "Recent Matches",
+                            color      = Color.White,
+                            fontSize   = 18.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -123,15 +187,29 @@ fun MatchCard(
     rankTiers: Map<String, TierData>,
     onClick: () -> Unit
 ) {
-    val isVictory = match.hasWon
-    val cardColor = if (isVictory) Color(0xFF1A3A2A) else Color(0xFF3A1A1A)
-    val resultColor = if (isVictory) Color(0xFF4ADE80) else Color(0xFFFF4655)
-    val resultText = if (isVictory) "VICTORY" else "DEFEAT"
-
     val roundsWon = if (match.playerTeam.equals("Red", ignoreCase = true))
         match.redRoundsWon else match.blueRoundsWon
     val roundsLost = if (match.playerTeam.equals("Red", ignoreCase = true))
         match.blueRoundsWon else match.redRoundsWon
+
+    val isDraw    = roundsWon == roundsLost
+    val isVictory = match.hasWon && !isDraw
+
+    val cardColor   = when {
+        isDraw    -> Color(0xFF2A2A2A)
+        isVictory -> Color(0xFF1A3A2A)
+        else      -> Color(0xFF3A1A1A)
+    }
+    val resultColor = when {
+        isDraw    -> Color(0xFF9BA3AF)
+        isVictory -> Color(0xFF4ADE80)
+        else      -> Color(0xFFFF4655)
+    }
+    val resultText = when {
+        isDraw    -> "DRAW"
+        isVictory -> "VICTORY"
+        else      -> "DEFEAT"
+    }
 
     val rankKey = match.rankName?.uppercase()
     val rankTier = rankTiers[rankKey]

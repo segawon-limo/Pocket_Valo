@@ -42,6 +42,7 @@ class LoadingViewModel(application: Application) : AndroidViewModel(application)
         "Loading rank data...",
         "Loading your store...",
         "Loading your profile...",
+        "Loading rank info...",
         "Loading match history..."
     )
 
@@ -100,9 +101,16 @@ class LoadingViewModel(application: Application) : AndroidViewModel(application)
         _uiState.value = _uiState.value.copy(progress = 5 / total, stepLabel = steps[5])
         storeRepo.fetchPlayerTitle()
 
-        // Step 6: Match history — via shared PlayerViewModel
-        // loadFromTokenIfNeeded() sudah ada guard: skip kalau data sudah ada
+        // Step 6: MMR — current rank (via PlayerViewModel agar shared ke HomeScreen+AccountScreen)
         _uiState.value = _uiState.value.copy(progress = 6 / total, stepLabel = steps[6])
+        playerViewModel.loadFromTokenIfNeeded()  // ensure name/tag/region tersedia
+        val account = playerViewModel.uiState.value.accountData
+        if (account != null) {
+            playerViewModel.loadMmr(account.region, account.name, account.tag)
+        }
+
+        // Step 7: Match history
+        _uiState.value = _uiState.value.copy(progress = 7 / total, stepLabel = steps[7])
         playerViewModel.loadFromTokenIfNeeded()
 
         // Tunggu sampai PlayerViewModel selesai loading (atau timeout outer sudah handle)
@@ -112,6 +120,6 @@ class LoadingViewModel(application: Application) : AndroidViewModel(application)
             waited += 200
         }
 
-        _uiState.value = _uiState.value.copy(progress = 7 / total, stepLabel = "Ready!")
+        _uiState.value = _uiState.value.copy(progress = 8 / total, stepLabel = "Ready!")
     }
 }

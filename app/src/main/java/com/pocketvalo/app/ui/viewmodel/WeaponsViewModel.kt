@@ -1,10 +1,16 @@
 package com.pocketvalo.app.ui.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.pocketvalo.app.data.local.AppDatabase
+import com.pocketvalo.app.data.local.TokenStorage
 import com.pocketvalo.app.data.model.WeaponData
 import com.pocketvalo.app.data.repository.AssetsRepository
+import com.pocketvalo.app.data.repository.AuthResult
 import com.pocketvalo.app.data.repository.Result
+import com.pocketvalo.app.data.repository.RiotAuthRepository
+import com.pocketvalo.app.data.repository.StoreRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -14,12 +20,20 @@ data class WeaponsUiState(
     val weapons: List<WeaponData> = emptyList(),
     val filteredWeapons: List<WeaponData> = emptyList(),
     val selectedCategory: String? = null,
+    // Map<weaponUuid, equippedSkinUuid> — dari loadout player
+    val equippedSkins: Map<String, String> = emptyMap(),
     val error: String? = null
 )
 
-class WeaponsViewModel : ViewModel() {
+class WeaponsViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = AssetsRepository.getInstance()
+    private val repository    = AssetsRepository.getInstance()
+    private val tokenStorage  = TokenStorage(application)
+    private val storeRepo     = StoreRepository(
+        tokenStorage   = tokenStorage,
+        authRepository = RiotAuthRepository(tokenStorage),
+        storeDao       = AppDatabase.getInstance(application).storeDao()
+    )
 
     private val _uiState = MutableStateFlow(WeaponsUiState())
     val uiState: StateFlow<WeaponsUiState> = _uiState
@@ -28,6 +42,7 @@ class WeaponsViewModel : ViewModel() {
 
     init {
         loadWeaponsIfNeeded()
+        fetchEquippedSkins()
     }
 
     fun loadWeaponsIfNeeded() {
@@ -37,18 +52,34 @@ class WeaponsViewModel : ViewModel() {
 
     private fun loadWeapons() {
         viewModelScope.launch {
-            _uiState.value = WeaponsUiState(isLoading = true)
+            _uiState.value = _uiState.value.copy(isLoading = true)
             when (val result = repository.getWeapons()) {
                 is Result.Success -> {
-                    _uiState.value = WeaponsUiState(
-                        weapons = result.data,
+                    _uiState.value = _uiState.value.copy(
+                        isLoading       = false,
+                        weapons         = result.data,
                         filteredWeapons = result.data
                     )
                 }
                 is Result.Error -> {
-                    _uiState.value = WeaponsUiState(error = result.message)
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error     = result.message
+                    )
                 }
                 else -> Unit
+            }
+        }
+    }
+
+    private fun fetchEquippedSkins() {
+        if (!tokenStorage.isLoggedIn) return
+        viewModelScope.launch {
+            when (val result = storeRepo.fetchEquippedSkins()) {
+                is AuthResult.Success -> {
+                    _uiState.value = _uiState.value.copy(equippedSkins = result.data)
+                }
+                is AuthResult.Failure -> { /* silent fail — default skin icons masih muncul */ }
             }
         }
     }
@@ -57,7 +88,7 @@ class WeaponsViewModel : ViewModel() {
         val weapons = _uiState.value.weapons
         _uiState.value = _uiState.value.copy(
             selectedCategory = category,
-            filteredWeapons = if (category == null) weapons
+            filteredWeapons  = if (category == null) weapons
             else weapons.filter { it.category.contains(category, ignoreCase = true) }
         )
     }

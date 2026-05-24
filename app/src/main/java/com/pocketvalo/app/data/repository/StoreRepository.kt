@@ -214,6 +214,44 @@ class StoreRepository(
         }
     }
 
+    // ── Equipped skins ────────────────────────────────────────────────────────
+    // Returns Map<weaponUuid, equippedSkinUuid> dari loadout player
+
+    suspend fun fetchEquippedSkins(): AuthResult<Map<String, String>> {
+        val tokenResult = authRepository.ensureValidToken()
+        if (tokenResult.isFailure) {
+            return AuthResult.Failure(
+                tokenResult.exceptionOrNull() ?: Exception("Token refresh failed")
+            )
+        }
+
+        val puuid       = tokenStorage.puuid       ?: return AuthResult.Failure(Exception("Not logged in"))
+        val region      = tokenStorage.region      ?: return AuthResult.Failure(Exception("Region not set"))
+        val accessToken = tokenStorage.accessToken ?: return AuthResult.Failure(Exception("No access token"))
+        val entitlement = tokenStorage.entitlementToken ?: return AuthResult.Failure(Exception("No entitlement token"))
+
+        return withContext(Dispatchers.IO) {
+            try {
+                val loadout = execute<PlayerLoadoutResponse>(
+                    Request.Builder()
+                        .url("https://pd.$region.a.pvp.net/personalization/v2/players/$puuid/playerloadout")
+                        .get()
+                        .header("Authorization", "Bearer $accessToken")
+                        .header("X-Riot-Entitlements-JWT", entitlement)
+                        .build()
+                )
+
+                val skinMap = loadout?.guns
+                    ?.associate { it.weaponId to it.skinId }
+                    ?: emptyMap()
+
+                AuthResult.Success(skinMap)
+            } catch (e: Exception) {
+                AuthResult.Failure(e)
+            }
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun parsePricesFromCache(raw: String): Map<String, Int> {

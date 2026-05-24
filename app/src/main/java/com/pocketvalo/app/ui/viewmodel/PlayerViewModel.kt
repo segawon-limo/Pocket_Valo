@@ -21,14 +21,19 @@ val API_KEY = BuildConfig.HENRIK_API_KEY
 data class PlayerUiState(
     val isLoading: Boolean = false,
     val accountData: AccountData? = null,
+    val playerCardSmallUrl: String? = null,
     val matchHistory: List<MatchEntity> = emptyList(),
-    val rawMatchHistory: List<com.pocketvalo.app.data.model.MatchData> = emptyList(), // for MatchScreen scoreboard
+    val rawMatchHistory: List<com.pocketvalo.app.data.model.MatchData> = emptyList(),
     val selectedMatch: com.pocketvalo.app.data.model.MatchData? = null,
     val matchDetail: com.pocketvalo.app.data.model.MatchDetailData? = null,
     val isLoadingDetail: Boolean = false,
     val rankTiers: Map<String, TierData> = emptyMap(),
     val maps: Map<String, MapData> = emptyMap(),
     val savedAccounts: List<AccountEntity> = emptyList(),
+    // MMR — current rank dari Henrik MMR endpoint
+    val currentRankName: String? = null,
+    val currentRankIconUrl: String? = null,
+    val currentRR: Int? = null,
     val error: String? = null
 )
 
@@ -80,9 +85,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             repository.getCachedMatchHistory(riotId).collect { matches ->
                 val filtered = matches
+                    .take(15)   // ambil 15 match terakhir dulu
                     .filter { it.mode.equals("Competitive", ignoreCase = true) ||
                             it.mode.equals("Unrated", ignoreCase = true) }
-                    .take(10)
+                    .take(10)   // lalu ambil 10 Competitive/Unrated
                 _uiState.value = _uiState.value.copy(matchHistory = filtered)
             }
         }
@@ -105,13 +111,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 is Result.Success -> {
                     val accountData = result.data.data
                     _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        accountData = accountData
+                        isLoading          = false,
+                        accountData        = accountData,
+                        playerCardSmallUrl = accountData?.card?.small
                     )
                     // Load map/rank assets now that user has logged in
                     loadAssetsIfNeeded()
                     accountData?.region?.let { region ->
                         refreshMatchHistory(region, name, tag)
+                        loadMmr(region, name, tag)
                     }
                 }
                 is Result.Error -> {
@@ -133,6 +141,22 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 _uiState.value = _uiState.value.copy(
                     rawMatchHistory = result.data.data ?: emptyList()
                 )
+            }
+        }
+    }
+
+    fun loadMmr(region: String, name: String, tag: String) {
+        viewModelScope.launch {
+            when (val result = repository.getMmr(region, name, tag, API_KEY)) {
+                is Result.Success -> {
+                    val current = result.data.currentData
+                    _uiState.value = _uiState.value.copy(
+                        currentRankName    = current?.currentTierPatched,
+                        currentRankIconUrl = current?.images?.small,
+                        currentRR          = current?.rankingInTier
+                    )
+                }
+                else -> Unit  // silent fail — HomeScreen tetap tampil tanpa rank
             }
         }
     }

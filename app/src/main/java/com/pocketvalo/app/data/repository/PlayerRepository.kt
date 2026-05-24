@@ -7,6 +7,7 @@ import com.pocketvalo.app.data.local.entity.MatchEntity
 import com.pocketvalo.app.data.model.AccountResponse
 import com.pocketvalo.app.data.model.MatchData
 import com.pocketvalo.app.data.model.MatchDetailResponse
+import com.pocketvalo.app.data.model.MMRData
 import com.pocketvalo.app.data.model.MatchHistoryResponse
 import com.pocketvalo.app.data.remote.api.RetrofitClient
 import kotlinx.coroutines.Dispatchers
@@ -162,5 +163,29 @@ class PlayerRepository(context: Context) {
             cachedAt = System.currentTimeMillis(),
             matchIndex = index
         )
+    }
+
+    // ─── MMR ─────────────────────────────────────────────────────────────────
+
+    suspend fun getMmr(
+        region: String,
+        name: String,
+        tag: String,
+        apiKey: String
+    ): Result<MMRData> = withContext(Dispatchers.IO) {
+        try {
+            val response = api.getMmr(region, name, tag, apiKey)
+            when {
+                response.isSuccessful -> {
+                    val data = response.body()?.data
+                        ?: return@withContext Result.Error("No MMR data")
+                    Result.Success(data)
+                }
+                response.code() == 429 -> Result.Error("Rate limit exceeded")
+                else -> Result.Error("MMR fetch failed: ${response.code()}")
+            }
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Network error")
+        }
     }
 }
