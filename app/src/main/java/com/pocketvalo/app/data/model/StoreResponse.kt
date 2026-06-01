@@ -71,7 +71,25 @@ data class FeaturedBundle(
 
 data class RawBundle(
     @SerializedName("DataAssetID") val uuid: String,
-    @SerializedName("DurationRemainingInSeconds") val durationRemainingInSeconds: Long
+    @SerializedName("DurationRemainingInSeconds") val durationRemainingInSeconds: Long,
+    @SerializedName("Items") val items: List<BundleItem>? = null,
+    @SerializedName("TotalBaseCost") val totalBaseCost: Map<String, Int>? = null,
+    @SerializedName("TotalDiscountedCost") val totalDiscountedCost: Map<String, Int>? = null,
+    @SerializedName("TotalDiscountPercent") val totalDiscountPercent: Float? = null
+)
+
+data class BundleItem(
+    @SerializedName("Item") val item: BundleItemDetail?,
+    @SerializedName("BasePrice") val basePrice: Int = 0,
+    @SerializedName("DiscountedPrice") val discountedPrice: Int = 0,
+    @SerializedName("DiscountPercent") val discountPercent: Float = 0f,
+    @SerializedName("IsPromoItem") val isPromoItem: Boolean = false
+)
+
+data class BundleItemDetail(
+    @SerializedName("ItemTypeID") val itemTypeId: String?,
+    @SerializedName("ItemID") val itemId: String?,
+    @SerializedName("Amount") val amount: Int = 1
 )
 
 data class BonusStore(
@@ -116,3 +134,49 @@ data class WalletResponse(
     // Radianite currency UUID
     val rad: Int get() = balances?.get("e59aa87c-4cbf-517a-5983-6e81511be9b7") ?: 0
 }
+// ── Bundle detail dari valorant-api.com ───────────────────────────────────────
+data class BundleDetailResponse(
+    @SerializedName("data") val data: BundleDetail?
+)
+
+data class BundleDetail(
+    @SerializedName("uuid")         val uuid: String,
+    @SerializedName("displayName")  val displayName: String,
+    @SerializedName("description")  val description: String?,
+    @SerializedName("displayIcon")  val displayIcon: String?,
+    @SerializedName("displayIcon2") val displayIcon2: String?,
+    @SerializedName("verticalPromoImage") val verticalPromoImage: String?,
+    @SerializedName("useAdditionalContext") val useAdditionalContext: Boolean?,
+    @SerializedName("weapons")      val weapons: List<BundleWeapon>?,
+    @SerializedName("cards")        val cards: List<BundleCard>?,
+    @SerializedName("price")        val price: Int?
+)
+
+data class BundleWeapon(
+    @SerializedName("uuid")            val uuid: String,
+    @SerializedName("displayName")     val displayName: String,
+    @SerializedName("displayIcon")     val displayIcon: String?,
+    @SerializedName("fullRender")      val fullRender: String?,
+    @SerializedName("price")           val price: Int?,
+    @SerializedName("discountedPrice")  val discountedPrice: Int?,
+    @SerializedName("weapon")          val weapon: BundleWeaponInfo?,
+    @SerializedName("levels")          val levels: List<BundleWeaponLevel>? = null
+)
+
+data class BundleWeaponLevel(
+    @SerializedName("uuid")           val uuid: String,
+    @SerializedName("streamedVideo")  val streamedVideo: String?
+)
+
+data class BundleWeaponInfo(
+    @SerializedName("displayName") val displayName: String?,
+    @SerializedName("category")    val category: String?
+)
+
+data class BundleCard(
+    @SerializedName("uuid")        val uuid: String,
+    @SerializedName("displayName") val displayName: String,
+    @SerializedName("displayIcon") val displayIcon: String?,
+    @SerializedName("price")       val price: Int?,
+    @SerializedName("discountedPrice") val discountedPrice: Int?
+)

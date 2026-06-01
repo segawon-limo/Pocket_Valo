@@ -20,6 +20,31 @@ class AssetsRepository private constructor() {
 
     // ── Singleton ─────────────────────────────────────────────────────────────
 
+    // ── Bundle detail ─────────────────────────────────────────────────────────
+
+    private val bundleCache   = mutableMapOf<String, com.pocketvalo.app.data.model.BundleDetail>()
+    private val bundleFetched = mutableSetOf<String>() // track UUID yang sudah pernah di-fetch
+
+    suspend fun getBundleDetail(uuid: String): com.pocketvalo.app.data.model.BundleDetail? {
+        // Return cache kalau ada
+        bundleCache[uuid]?.let { return it }
+        // Jangan retry kalau sudah pernah fetch dan hasilnya null
+        if (uuid in bundleFetched) return null
+
+        bundleFetched.add(uuid)
+        return try {
+            android.util.Log.d("AssetsRepo", "Fetching bundle from API: $uuid")
+            val resp = RetrofitClient.valorantApi.getBundle(uuid)
+            android.util.Log.d("AssetsRepo", "Bundle response: ${resp.code()} body=${resp.body()?.data?.displayName}")
+            val detail = resp.body()?.data
+            if (detail != null) bundleCache[uuid] = detail
+            detail
+        } catch (e: Exception) {
+            android.util.Log.e("AssetsRepo", "Bundle fetch error: ${e.message}")
+            null
+        }
+    }
+
     companion object {
         @Volatile private var INSTANCE: AssetsRepository? = null
 
@@ -140,18 +165,23 @@ class AssetsRepository private constructor() {
             val cache = mutableMapOf<String, StoreSkinInfo>()
             response.body()?.data?.forEach { weapon ->
                 weapon.skins.forEach { skin ->
-                    val levelOneUuid = skin.levels.firstOrNull()?.uuid ?: return@forEach
                     val icon = skin.levels.firstOrNull { it.displayIcon != null }?.displayIcon
                         ?: skin.chromas.firstOrNull()?.fullRender
                     val videoUrl = skin.levels.lastOrNull { it.streamedVideo != null }?.streamedVideo
-
-                    cache[levelOneUuid] = StoreSkinInfo(
+                    val info = StoreSkinInfo(
                         displayName = skin.displayName,
                         tierUuid    = skin.contentTierUuid,
                         displayIcon = icon,
                         cost        = weapon.shopData?.cost ?: 0,
                         videoUrl    = videoUrl
                     )
+
+                    // Index ALL levels — Night Market uses any level UUID, not just level[0]
+                    skin.levels.forEach { level ->
+                        if (level.uuid.isNotBlank()) cache[level.uuid] = info
+                    }
+                    // Also index by skin UUID itself (fallback)
+                    if (skin.uuid.isNotBlank()) cache[skin.uuid] = info
                 }
             }
             skinLevelCache = cache

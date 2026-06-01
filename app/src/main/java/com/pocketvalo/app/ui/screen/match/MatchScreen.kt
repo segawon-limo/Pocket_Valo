@@ -1,27 +1,50 @@
 package com.pocketvalo.app.ui.screen.match
 
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.background
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.border
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.horizontalScroll
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.layout.*
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.lazy.LazyColumn
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.lazy.items
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.rememberScrollState
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.material.icons.Icons
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.material.icons.filled.ArrowBack
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.material3.*
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.runtime.*
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.Alignment
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.Modifier
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.draw.clip
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.graphics.Brush
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.graphics.Color
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.layout.ContentScale
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.text.font.FontWeight
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.text.style.TextAlign
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.text.style.TextOverflow
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.unit.dp
+import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -123,7 +146,13 @@ fun MatchScreen(
                     Column(modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)) {
                         Text(match.metadata.map, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                         Text("${match.metadata.mode} · ${match.metadata.region.uppercase()}", color = Color(0xFFFF4655), fontSize = 13.sp)
-                        Text(match.metadata.gameStartPatched, color = Color(0xFF9BA3AF), fontSize = 12.sp)
+                        Text(
+                            text  = if (match.metadata.gameStartEpoch > 0L)
+                                formatMatchDateTime(match.metadata.gameStartEpoch)
+                            else match.metadata.gameStartPatched,
+                            color = Color(0xFF9BA3AF),
+                            fontSize = 12.sp
+                        )
                     }
                 }
             }

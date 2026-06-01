@@ -18,13 +18,29 @@ class MultiAccountTokenStorage(context: Context) {
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
         .build()
 
-    private val prefs = EncryptedSharedPreferences.create(
-        context,
-        "riot_tokens_multi",
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-    )
+    private val prefs = createPrefs(context)
+
+    private fun createPrefs(ctx: android.content.Context) = try {
+        EncryptedSharedPreferences.create(
+            ctx,
+            "riot_tokens_multi",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    } catch (e: Exception) {
+        android.util.Log.w("MultiAccountStorage", "Corrupt prefs, clearing: \${e.message}")
+        ctx.getSharedPreferences("riot_tokens_multi", android.content.Context.MODE_PRIVATE)
+            .edit().clear().commit()
+        try { ctx.deleteSharedPreferences("riot_tokens_multi") } catch (_: Exception) {}
+        EncryptedSharedPreferences.create(
+            ctx,
+            "riot_tokens_multi",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
 
     // ── Active account ────────────────────────────────────────────────────────
 

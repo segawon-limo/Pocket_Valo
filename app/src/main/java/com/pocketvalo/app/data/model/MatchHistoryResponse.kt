@@ -18,6 +18,7 @@ data class MatchMetadata(
     @SerializedName("map") val map: String,
     @SerializedName("game_length") val gameLength: Int,
     @SerializedName("game_start_patched") val gameStartPatched: String,
+    @SerializedName("game_start") val gameStartEpoch: Long = 0L,
     @SerializedName("mode") val mode: String,
     @SerializedName("region") val region: String,
     @SerializedName("rounds_played") val roundsPlayed: Int = 0

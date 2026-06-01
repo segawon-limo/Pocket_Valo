@@ -16,6 +16,7 @@ data class MatchEntity(
     val map: String,
     val mode: String,
     val gameStartPatched: String,
+    val gameStartEpoch: Long = 0L,
     val gameLength: Int,
     val roundsPlayed: Int,
 

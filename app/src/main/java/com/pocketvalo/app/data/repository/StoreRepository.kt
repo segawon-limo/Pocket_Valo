@@ -15,13 +15,37 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
+data class NightMarketOffer(
+    val skinUuid: String,
+    val originalPrice: Int,
+    val discountedPrice: Int,
+    val discountPercent: Int
+)
+
+data class BundleSkinItem(
+    val itemId: String,
+    val basePrice: Int,
+    val discountedPrice: Int
+)
+
+data class BundleInfo(
+    val uuid: String,
+    val durationRemainingInSeconds: Long,
+    val skinItems: List<BundleSkinItem> = emptyList(),
+    val totalBasePrice: Int = 0,
+    val totalDiscountedPrice: Int = 0
+)
+
 data class StoreData(
     val skinUuids: List<String>,
     val skinPrices: Map<String, Int> = emptyMap(),
     val offersExpiresAt: Long,
     val vpBalance: Int,
     val radBalance: Int,
-    val fromCache: Boolean = false
+    val fromCache: Boolean = false,
+    val nightMarketOffers: List<NightMarketOffer> = emptyList(),
+    val nightMarketRemainingSeconds: Long = 0L,
+    val bundles: List<BundleInfo> = emptyList()
 )
 
 data class PlayerTitleInfo(
@@ -59,17 +83,32 @@ class StoreRepository(
         if (!forceRefresh) {
             val cached = storeDao.getStore(puuid)
             if (cached != null && System.currentTimeMillis() / 1000 < cached.offersExpiresAt) {
-                val prices = parsePricesFromCache(cached.skinPrices)
-                return AuthResult.Success(
-                    StoreData(
-                        skinUuids      = cached.skinOfferUuids.split(","),
-                        skinPrices     = prices,
-                        offersExpiresAt = cached.offersExpiresAt,
-                        vpBalance      = cached.vpBalance,
-                        radBalance     = cached.radBalance,
-                        fromCache      = true
+                // Cache lama (sebelum nightMarketJson ditambahkan) tidak punya field ini.
+                // Kalau kosong, paksa re-fetch agar Night Market ter-parse dengan benar.
+                // Setelah re-fetch pertama kali, cache sudah punya nightMarketJson (bisa "" kalau memang tidak ada NM).
+                val isStaleCacheVersion = cached.nightMarketJson.isEmpty() &&
+                        cached.nightMarketRemainingSeconds == 0L
+                if (!isStaleCacheVersion) {
+                    val prices = parsePricesFromCache(cached.skinPrices)
+                    val cachedNm: List<NightMarketOffer> = try {
+                        gson.fromJson(cached.nightMarketJson, Array<NightMarketOffer>::class.java)
+                            ?.toList() ?: emptyList()
+                    } catch (e: Exception) { emptyList() }
+                    return AuthResult.Success(
+                        StoreData(
+                            skinUuids                   = cached.skinOfferUuids.split(","),
+                            skinPrices                  = prices,
+                            offersExpiresAt             = cached.offersExpiresAt,
+                            vpBalance                   = cached.vpBalance,
+                            radBalance                  = cached.radBalance,
+                            fromCache                   = true,
+                            nightMarketOffers           = cachedNm,
+                            nightMarketRemainingSeconds = cached.nightMarketRemainingSeconds
+                        )
                     )
-                )
+                }
+                // Stale cache version — fall through to API fetch
+                android.util.Log.d("StoreRepository", "Cache stale (no NM field), re-fetching...")
             }
         }
 
@@ -141,14 +180,58 @@ class StoreRepository(
                     )
                 )
 
+                // Parse Night Market (BonusStore) — hanya ada saat event
+                val nightMarketOffers = storefrontResp.bonusStore?.offers
+                    ?.mapNotNull { bonus ->
+                        val skinUuid = bonus.offer.rewards.firstOrNull()?.itemId ?: return@mapNotNull null
+                        val discountedPrice = bonus.discountCosts["85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741"] ?: 0
+                        val originalPrice   = bonus.offer.cost["85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741"] ?: 0
+                        NightMarketOffer(
+                            skinUuid        = skinUuid,
+                            originalPrice   = originalPrice,
+                            discountedPrice = discountedPrice,
+                            discountPercent = bonus.discountPercent
+                        )
+                    } ?: emptyList()
+
+                // Parse Featured Bundles — include skin items dan harga
+                val SKIN_LEVEL_TYPE = "e7c63390-eda7-46e0-bb7a-a6abdacd2433"
+                val bundles = storefrontResp.featuredBundle?.bundles
+                    ?.map { raw ->
+                        val skinItems = raw.items
+                            ?.filter { it.item?.itemTypeId == SKIN_LEVEL_TYPE }
+                            ?.mapNotNull { bundleItem ->
+                                val itemId = bundleItem.item?.itemId ?: return@mapNotNull null
+                                BundleSkinItem(
+                                    itemId         = itemId,
+                                    basePrice      = bundleItem.basePrice,
+                                    discountedPrice = bundleItem.discountedPrice
+                                )
+                            } ?: emptyList()
+                        val totalBase = raw.totalBaseCost?.values?.sum() ?: 0
+                        val totalDisc = raw.totalDiscountedCost?.values?.sum() ?: 0
+                        BundleInfo(
+                            uuid                     = raw.uuid,
+                            durationRemainingInSeconds = raw.durationRemainingInSeconds,
+                            skinItems                = skinItems,
+                            totalBasePrice           = totalBase,
+                            totalDiscountedPrice     = totalDisc
+                        )
+                    } ?: emptyList()
+
+                val nmRemaining = storefrontResp.bonusStore?.remainingDurationInSeconds ?: 0L
+
                 AuthResult.Success(
                     StoreData(
-                        skinUuids       = skinOffers,
-                        skinPrices      = skinPrices,
-                        offersExpiresAt = expiresAt,
-                        vpBalance       = walletResp?.vp ?: 0,
-                        radBalance      = walletResp?.rad ?: 0,
-                        fromCache       = false
+                        skinUuids                  = skinOffers,
+                        skinPrices                 = skinPrices,
+                        offersExpiresAt            = expiresAt,
+                        vpBalance                  = walletResp?.vp ?: 0,
+                        radBalance                 = walletResp?.rad ?: 0,
+                        fromCache                  = false,
+                        nightMarketOffers          = nightMarketOffers,
+                        nightMarketRemainingSeconds = nmRemaining,
+                        bundles                    = bundles
                     )
                 )
             } catch (e: Exception) {

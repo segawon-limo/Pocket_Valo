@@ -40,12 +40,14 @@ import com.pocketvalo.app.ui.viewmodel.AccountViewModel
 import com.pocketvalo.app.ui.viewmodel.AgentsViewModel
 import com.pocketvalo.app.ui.viewmodel.PlayerViewModel
 import com.pocketvalo.app.ui.viewmodel.StoreViewModel
+import com.pocketvalo.app.ui.viewmodel.WatchlistViewModel
 import com.pocketvalo.app.ui.viewmodel.WeaponsViewModel
 
 sealed class Screen(val route: String) {
     object Splash      : Screen("splash")
+    object Welcome     : Screen("welcome")
     object Login       : Screen("login")
-    object AddAccount  : Screen("add_account")   // Login for adding extra account
+    object AddAccount  : Screen("add_account")
     object Loading     : Screen("loading")
     object Input       : Screen("input")
     object Home        : Screen("home")
@@ -56,6 +58,13 @@ sealed class Screen(val route: String) {
     object Account     : Screen("account")
     object Agents      : Screen("agents")
     object Weapons     : Screen("weapons")
+    object NightMarket : Screen("night_market")
+    object BundleDetail : Screen("bundle_detail/{uuid}/{duration}/{basePrice}/{discPrice}") {
+        fun createRoute(uuid: String, duration: Long, basePrice: Int, discPrice: Int) = "bundle_detail/$uuid/$duration/$basePrice/$discPrice"
+    }
+    object Watchlist   : Screen("watchlist")
+    object NativeLogin : Screen("native_login")
+    object NativeLoginAdd : Screen("native_login_add")
     object AgentDetail : Screen("agent/{agentId}") {
         fun createRoute(agentId: String) = "agent/$agentId"
     }
@@ -71,16 +80,15 @@ data class BottomNavItem(
 fun AppNavigation(
     navController: NavHostController = rememberNavController()
 ) {
-    val playerViewModel: PlayerViewModel = viewModel()
+    val playerViewModel: PlayerViewModel   = viewModel()
     val accountViewModel: AccountViewModel = viewModel()
+    // Shared StoreViewModel — supaya cache bundle/NM tidak hilang saat navigate antar store screens
+    val storeViewModel: StoreViewModel     = viewModel()
 
-    // Wire switch-account navigation: setelah token di-swap, reset PlayerViewModel
-    // lalu navigate ke LoadingScreen agar semua data di-fetch ulang
     LaunchedEffect(Unit) {
         accountViewModel.onNavigateToLoading = {
             playerViewModel.resetForSwitch()
             navController.navigate(Screen.Loading.route) {
-                // Hapus semua back stack sampai Home, buat Loading jadi entry baru
                 popUpTo(Screen.Home.route) { inclusive = false }
             }
         }
@@ -110,11 +118,22 @@ fun AppNavigation(
             startDestination = Screen.Splash.route,
             modifier         = Modifier.padding(innerPadding)
         ) {
-            composable(Screen.Splash.route)  { SplashScreen(navController) }
-            composable(Screen.Login.route)   { LoginScreen(navController) }
+            composable(Screen.Splash.route) { SplashScreen(navController) }
+            composable(Screen.Welcome.route) {
+                com.pocketvalo.app.ui.screen.welcome.WelcomeScreen(navController)
+            }
+            composable(Screen.Login.route) { LoginScreen(navController) }
             composable(Screen.AddAccount.route) {
-                // Login screen untuk add account baru — simpan tanpa switch, balik ke Account
                 LoginScreen(
+                    navController = navController,
+                    isAddAccount  = true
+                )
+            }
+            composable(Screen.NativeLogin.route) {
+                com.pocketvalo.app.ui.screen.nativelogin.NativeLoginScreen(navController)
+            }
+            composable(Screen.NativeLoginAdd.route) {
+                com.pocketvalo.app.ui.screen.nativelogin.NativeLoginScreen(
                     navController = navController,
                     isAddAccount  = true
                 )
@@ -122,10 +141,43 @@ fun AppNavigation(
             composable(Screen.Loading.route) { LoadingScreen(navController, playerViewModel) }
             composable(Screen.Input.route)   { InputScreen(navController, playerViewModel) }
             composable(Screen.Home.route)    { HomeScreen(navController, playerViewModel) }
+
+            // Store — pakai shared storeViewModel
             composable(Screen.Store.route) {
-                val storeViewModel: StoreViewModel = viewModel()
                 StoreScreen(storeViewModel = storeViewModel, navController = navController)
             }
+            composable(Screen.NightMarket.route) {
+                com.pocketvalo.app.ui.screen.store.NightMarketScreen(
+                    storeViewModel = storeViewModel,
+                    onBack         = { navController.popBackStack() }
+                )
+            }
+            composable(Screen.BundleDetail.route) { backStackEntry ->
+                val uuid      = backStackEntry.arguments?.getString("uuid") ?: ""
+                val duration  = backStackEntry.arguments?.getString("duration")?.toLongOrNull() ?: 0L
+                val basePrice = backStackEntry.arguments?.getString("basePrice")?.toIntOrNull() ?: 0
+                val discPrice = backStackEntry.arguments?.getString("discPrice")?.toIntOrNull() ?: 0
+                // skinItems tidak bisa di-pass via route — ambil dari storeViewModel.uiState
+                val skinItems = storeViewModel.uiState.value.store?.bundles
+                    ?.firstOrNull { it.uuid == uuid }?.skinItems ?: emptyList()
+                com.pocketvalo.app.ui.screen.store.BundleDetailScreen(
+                    bundleUuid               = uuid,
+                    durationRemainingSeconds = duration,
+                    totalBasePrice           = basePrice,
+                    totalDiscountedPrice     = discPrice,
+                    skinItems                = skinItems,
+                    storeViewModel           = storeViewModel,
+                    navController            = navController
+                )
+            }
+            composable(Screen.Watchlist.route) {
+                val watchlistViewModel: WatchlistViewModel = viewModel()
+                com.pocketvalo.app.ui.screen.store.WatchlistScreen(
+                    viewModel = watchlistViewModel,
+                    onBack    = { navController.popBackStack() }
+                )
+            }
+
             composable(Screen.Match.route) { backStackEntry ->
                 val matchId = backStackEntry.arguments?.getString("matchId") ?: ""
                 MatchScreen(matchId, navController, playerViewModel)

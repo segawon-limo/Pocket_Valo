@@ -4,32 +4,49 @@ import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
-/**
- * Encrypted storage for Riot auth tokens.
- * Never stores username/password — only tokens obtained after OAuth login.
- *
- * Stored keys:
- *  - access_token  : short-lived RSO token (~1 hour)
- *  - id_token      : used for region detection
- *  - refresh_token : long-lived, used to renew access_token without re-login
- *  - entitlement   : required for store API calls
- *  - puuid         : player UUID
- *  - region        : e.g. "ap", "na", "eu"
- *  - username      : gameName#tagLine, for display only
- */
-class TokenStorage(context: Context) {
+class TokenStorage(private val context: Context) {
 
     private val masterKey = MasterKey.Builder(context)
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
         .build()
 
-    private val prefs = EncryptedSharedPreferences.create(
-        context,
-        "riot_tokens",
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-    )
+    private val prefs = createPrefs()
+
+    /**
+     * EncryptedSharedPreferences bisa throw AEADBadTagException saat reinstall
+     * karena Android Keystore generate MasterKey baru tapi data lama masih
+     * terenkripsi dengan key lama. Fix: hapus file lama dan recreate.
+     */
+    private fun createPrefs() = try {
+        EncryptedSharedPreferences.create(
+            context,
+            "riot_tokens",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    } catch (e: Exception) {
+        android.util.Log.w("TokenStorage", "EncryptedSharedPreferences corrupt, clearing: ${e.message}")
+        // Hapus file SharedPreferences yang corrupt
+        context.getSharedPreferences("riot_tokens", Context.MODE_PRIVATE)
+            .edit().clear().commit()
+        try {
+            context.deleteSharedPreferences("riot_tokens")
+        } catch (_: Exception) {}
+        // Hapus WebView cookies juga — supaya Riot tidak auto-login dengan session lama
+        try {
+            android.webkit.CookieManager.getInstance().removeAllCookies(null)
+            android.webkit.CookieManager.getInstance().flush()
+        } catch (_: Exception) {}
+        // Recreate fresh
+        EncryptedSharedPreferences.create(
+            context,
+            "riot_tokens",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
 
     var accessToken: String?
         get() = prefs.getString(KEY_ACCESS_TOKEN, null)
@@ -67,7 +84,7 @@ class TokenStorage(context: Context) {
         get() = refreshToken != null && puuid != null
 
     val isAccessTokenValid: Boolean
-        get() = accessToken != null && System.currentTimeMillis() < accessTokenExpiresAt - 60_000L // 1 min buffer
+        get() = accessToken != null && System.currentTimeMillis() < accessTokenExpiresAt - 60_000L
 
     fun saveTokens(
         accessToken: String,
@@ -86,13 +103,13 @@ class TokenStorage(context: Context) {
     }
 
     companion object {
-        private const val KEY_ACCESS_TOKEN = "access_token"
-        private const val KEY_ID_TOKEN = "id_token"
-        private const val KEY_REFRESH_TOKEN = "refresh_token"
-        private const val KEY_ENTITLEMENT = "entitlement_token"
-        private const val KEY_PUUID = "puuid"
-        private const val KEY_REGION = "region"
-        private const val KEY_USERNAME = "username"
+        private const val KEY_ACCESS_TOKEN    = "access_token"
+        private const val KEY_ID_TOKEN        = "id_token"
+        private const val KEY_REFRESH_TOKEN   = "refresh_token"
+        private const val KEY_ENTITLEMENT     = "entitlement_token"
+        private const val KEY_PUUID           = "puuid"
+        private const val KEY_REGION          = "region"
+        private const val KEY_USERNAME        = "username"
         private const val KEY_ACCESS_EXPIRES_AT = "access_expires_at"
     }
 }

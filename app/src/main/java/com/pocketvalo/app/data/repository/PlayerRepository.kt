@@ -147,6 +147,7 @@ class PlayerRepository(context: Context) {
             map = metadata.map,
             mode = metadata.mode,
             gameStartPatched = metadata.gameStartPatched,
+            gameStartEpoch   = metadata.gameStartEpoch,
             gameLength = metadata.gameLength,
             roundsPlayed = metadata.roundsPlayed,
             agentName = player.character,

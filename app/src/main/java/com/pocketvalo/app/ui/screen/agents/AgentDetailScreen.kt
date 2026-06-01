@@ -32,26 +32,23 @@ fun AgentDetailScreen(
     agentsViewModel: AgentsViewModel
 ) {
     val uiState by agentsViewModel.uiState.collectAsStateWithLifecycle()
-    val agent = uiState.agents.find { it.uuid == agentId }
+    val agent   = uiState.agents.find { it.uuid == agentId }
 
     if (agent == null) {
-        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0F1923)), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = Color(0xFFFF4655))
-        }
+        Box(
+            modifier         = Modifier.fillMaxSize().background(Color(0xFF0F1923)),
+            contentAlignment = Alignment.Center
+        ) { CircularProgressIndicator(color = Color(0xFFFF4655)) }
         return
     }
 
-    val gradientColors = agent.backgroundGradientColors
-        ?.take(2)
-        ?.mapNotNull { hex ->
-            try { Color(android.graphics.Color.parseColor("#$hex")) }
-            catch (e: Exception) { null }
-        }
+    val gradientColors = parseGradientColors(agent.backgroundGradientColors)
 
-    val headerBrush = if (gradientColors?.size == 2) {
-        Brush.verticalGradient(gradientColors)
+    // Header: horizontal gradient kiri → kanan
+    val headerBrush = if (gradientColors != null) {
+        Brush.horizontalGradient(listOf(gradientColors[0], gradientColors[1]))
     } else {
-        Brush.verticalGradient(listOf(Color(0xFF1A2332), Color(0xFF0F1923)))
+        Brush.horizontalGradient(listOf(Color(0xFF1A2332), Color(0xFF0F1923)))
     }
 
     LazyColumn(
@@ -59,54 +56,65 @@ fun AgentDetailScreen(
             .fillMaxSize()
             .background(Color(0xFF0F1923))
     ) {
-        // Header with portrait
+        // ── Header ────────────────────────────────────────────────────────────
         item {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(320.dp)
+                    .height(380.dp)
                     .background(headerBrush)
             ) {
-                // Full portrait
-                if (agent.fullPortrait != null) {
+                // Background texture (low opacity, di belakang portrait)
+                if (agent.background != null) {
                     AsyncImage(
-                        model = agent.fullPortrait,
-                        contentDescription = agent.displayName,
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .align(Alignment.BottomCenter),
-                        contentScale = ContentScale.Fit
+                        model              = agent.background,
+                        contentDescription = null,
+                        modifier           = Modifier.fillMaxSize(),
+                        contentScale       = ContentScale.Crop,
+                        alpha              = 0.2f
                     )
                 }
 
-                // Gradient overlay bottom
+                // Full portrait — lebih besar di detail screen
+                if (agent.fullPortrait != null) {
+                    AsyncImage(
+                        model              = agent.fullPortrait,
+                        contentDescription = agent.displayName,
+                        modifier           = Modifier
+                            .fillMaxHeight()
+                            .align(Alignment.BottomCenter),
+                        contentScale       = ContentScale.Fit
+                    )
+                }
+
+                // Gradient fade ke background bawah
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(120.dp)
+                        .height(140.dp)
                         .align(Alignment.BottomCenter)
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, Color(0xFF0F1923))
+                                listOf(Color.Transparent, Color(0xFF0F1923))
                             )
                         )
                 )
 
                 // Back button
                 IconButton(
-                    onClick = { navController.popBackStack() },
+                    onClick  = { navController.popBackStack() },
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.ArrowBack,
+                        imageVector        = Icons.Default.ArrowBack,
                         contentDescription = "Back",
-                        tint = Color.White
+                        tint               = Color.White
                     )
                 }
 
-                // Agent name + role
+                // Role + nama
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
@@ -116,59 +124,56 @@ fun AgentDetailScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (role.displayIcon != null) {
                                 AsyncImage(
-                                    model = role.displayIcon,
+                                    model              = role.displayIcon,
                                     contentDescription = role.displayName,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier           = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                             }
                             Text(
-                                text = role.displayName.uppercase(),
-                                color = Color(0xFF9BA3AF),
+                                text     = role.displayName.uppercase(),
+                                color    = Color.White.copy(alpha = 0.75f),
                                 fontSize = 12.sp
                             )
                         }
                     }
                     Text(
-                        text = agent.displayName,
-                        color = Color.White,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold
+                        text       = agent.displayName,
+                        color      = Color.White,
+                        fontSize   = 36.sp,
+                        fontWeight = FontWeight.ExtraBold
                     )
                 }
             }
         }
 
-        // Description
+        // ── Description ───────────────────────────────────────────────────────
         item {
             Text(
-                text = agent.description,
-                color = Color(0xFF9BA3AF),
+                text     = agent.description,
+                color    = Color(0xFF9BA3AF),
                 fontSize = 14.sp,
                 lineHeight = 22.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
             )
-
             HorizontalDivider(
-                color = Color(0xFF1A2332),
+                color    = Color(0xFF1A2332),
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
 
-        // Abilities header
+        // ── Abilities header ──────────────────────────────────────────────────
         item {
             Text(
-                text = "ABILITIES",
-                color = Color.White,
-                fontSize = 18.sp,
+                text       = "ABILITIES",
+                color      = Color.White,
+                fontSize   = 18.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                modifier   = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
             )
         }
 
-        // Abilities list — filter out Ultimate slot jika mau pisahkan, tapi tampilkan semua
         val abilities = agent.abilities?.filter { it.displayIcon != null } ?: emptyList()
-
         items(abilities) { ability ->
             AbilityCard(ability = ability)
             Spacer(modifier = Modifier.height(8.dp))
@@ -191,20 +196,17 @@ fun AbilityCard(ability: AgentAbility) {
             .padding(12.dp),
         verticalAlignment = Alignment.Top
     ) {
-        // Ability icon
         Box(
-            modifier = Modifier
+            modifier         = Modifier
                 .size(48.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFF0F1923)),
             contentAlignment = Alignment.Center
         ) {
             AsyncImage(
-                model = ability.displayIcon,
+                model              = ability.displayIcon,
                 contentDescription = ability.displayName,
-                modifier = Modifier
-                    .size(36.dp)
-                    .padding(4.dp)
+                modifier           = Modifier.size(36.dp).padding(4.dp)
             )
         }
 
@@ -213,19 +215,19 @@ fun AbilityCard(ability: AgentAbility) {
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = ability.displayName,
-                    color = Color.White,
-                    fontSize = 15.sp,
+                    text       = ability.displayName,
+                    color      = Color.White,
+                    fontSize   = 15.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 if (isUltimate) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "ULTIMATE",
-                        color = Color(0xFFFF4655),
-                        fontSize = 10.sp,
+                        text       = "ULTIMATE",
+                        color      = Color(0xFFFF4655),
+                        fontSize   = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier
+                        modifier   = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .background(Color(0x33FF4655))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -234,9 +236,9 @@ fun AbilityCard(ability: AgentAbility) {
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = ability.description,
-                color = Color(0xFF9BA3AF),
-                fontSize = 13.sp,
+                text       = ability.description,
+                color      = Color(0xFF9BA3AF),
+                fontSize   = 13.sp,
                 lineHeight = 20.sp
             )
         }

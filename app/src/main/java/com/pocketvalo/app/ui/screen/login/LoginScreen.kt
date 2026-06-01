@@ -26,27 +26,20 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-/**
- * @param isAddAccount  true = add-account flow (clear cookies, simpan tanpa switch, balik ke Account)
- *                      false = first-time login (set active, navigate ke Loading)
- */
 @Composable
 fun LoginScreen(
     navController: NavController,
     isAddAccount: Boolean = false,
-    // Berikut dipakai hanya jika isAddAccount = false (legacy support)
     onSuccessRoute: String = Screen.Loading.route,
     popUpToRoute: String   = Screen.Login.route
 ) {
-    val context      = LocalContext.current
-    val tokenStorage = remember { TokenStorage(context) }
-    val multiStorage = remember { MultiAccountTokenStorage(context) }
-    val authRepo     = remember { RiotAuthRepository(tokenStorage, multiStorage) }
-    val db           = remember { AppDatabase.getInstance(context) }
-    val authUrl      = remember { authRepo.generateAuthUrl() }
-
-    // Simpan token aktif sebelum add-account supaya bisa di-restore jika diperlukan
+    val context             = LocalContext.current
+    val tokenStorage        = remember { TokenStorage(context) }
+    val multiStorage        = remember { MultiAccountTokenStorage(context) }
+    val authRepo            = remember { RiotAuthRepository(tokenStorage, multiStorage) }
+    val db                  = remember { AppDatabase.getInstance(context) }
     val previousActivePuuid = remember { if (isAddAccount) multiStorage.activePuuid else null }
+    val authUrl             = remember { authRepo.generateAuthUrl() }
 
     var isProcessing by remember { mutableStateOf(false) }
     var errorMsg     by remember { mutableStateOf<String?>(null) }
@@ -65,11 +58,7 @@ fun LoginScreen(
                         when (val result = authRepo.loginWithCode(code)) {
                             is AuthResult.Success -> {
                                 val accountData = result.data
-
                                 if (isAddAccount) {
-                                    // ── Add-account flow ───────────────────────────────────
-                                    // 1. Insert ke Room DB dengan data minimal
-                                    //    (accountLevel & cardSmall belum diketahui — diisi 0/null)
                                     launch(Dispatchers.IO) {
                                         db.accountDao().upsertAccount(
                                             AccountEntity(
@@ -84,42 +73,28 @@ fun LoginScreen(
                                             )
                                         )
                                     }
-
-                                    // 2. Restore active account — jangan switch ke akun baru
                                     if (previousActivePuuid != null) {
                                         multiStorage.activePuuid = previousActivePuuid
-                                        // Restore TokenStorage ke akun aktif sebelumnya
-                                        val prevRegion   = multiStorage.getRegion(previousActivePuuid)
-                                        val prevUsername = multiStorage.getUsername(previousActivePuuid)
-                                        val prevAccess   = multiStorage.getAccessToken(previousActivePuuid)
-                                        val prevRefresh  = multiStorage.getRefreshToken(previousActivePuuid)
-                                        val prevEntitle  = multiStorage.getEntitlementToken(previousActivePuuid)
                                         tokenStorage.puuid    = previousActivePuuid
-                                        tokenStorage.region   = prevRegion
-                                        tokenStorage.username = prevUsername
-                                        if (prevAccess != null && prevRefresh != null) {
+                                        tokenStorage.region   = multiStorage.getRegion(previousActivePuuid)
+                                        tokenStorage.username = multiStorage.getUsername(previousActivePuuid)
+                                        multiStorage.getAccessToken(previousActivePuuid)?.let { at ->
                                             tokenStorage.saveTokens(
-                                                accessToken      = prevAccess,
+                                                accessToken      = at,
                                                 idToken          = multiStorage.getIdToken(previousActivePuuid) ?: "",
-                                                refreshToken     = prevRefresh,
+                                                refreshToken     = multiStorage.getRefreshToken(previousActivePuuid) ?: "",
                                                 expiresInSeconds = ((multiStorage.getAccessExpiresAt(previousActivePuuid) - System.currentTimeMillis()) / 1000)
                                                     .toInt().coerceAtLeast(0)
                                             )
                                         }
-                                        if (prevEntitle != null) tokenStorage.entitlementToken = prevEntitle
+                                        multiStorage.getEntitlementToken(previousActivePuuid)
+                                            ?.let { tokenStorage.entitlementToken = it }
                                     }
-
-                                    // 3. Kembali ke Account screen
                                     navController.navigate(Screen.Account.route) {
                                         popUpTo(Screen.AddAccount.route) { inclusive = true }
                                     }
-
                                 } else {
-                                    // ── First-time login flow ──────────────────────────────
-                                    // Set sebagai active account
                                     multiStorage.activePuuid = accountData.puuid
-
-                                    // Insert ke DB (minimal — Loading screen akan update lengkap)
                                     launch(Dispatchers.IO) {
                                         db.accountDao().upsertAccount(
                                             AccountEntity(
@@ -134,7 +109,6 @@ fun LoginScreen(
                                             )
                                         )
                                     }
-
                                     navController.navigate(onSuccessRoute) {
                                         popUpTo(popUpToRoute) { inclusive = true }
                                     }
@@ -148,8 +122,8 @@ fun LoginScreen(
                     }
                 }
             },
-            onDismiss    = { /* tetap di screen, user bisa retry */ },
-            clearSession = isAddAccount
+            onDismiss    = { },
+            clearSession = true
         )
 
         if (isProcessing) {

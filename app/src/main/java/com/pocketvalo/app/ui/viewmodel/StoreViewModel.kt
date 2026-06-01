@@ -101,4 +101,10 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
             assetsRepository.getSkinByLevelUuid(levelUuid)
         }
     }
+
+    suspend fun getBundleDetail(uuid: String): com.pocketvalo.app.data.model.BundleDetail? {
+        return withContext(Dispatchers.IO) {
+            assetsRepository.getBundleDetail(uuid)
+        }
+    }
 }

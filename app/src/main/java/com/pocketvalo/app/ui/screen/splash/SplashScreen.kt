@@ -57,10 +57,18 @@ fun SplashScreen(navController: NavController) {
         label         = "image_fade"
     )
 
-    // Determine destination based on token state
-    val destination = if (tokenStorage.isLoggedIn) Screen.Loading.route else Screen.Login.route
+    // Routing logic:
+    // - Belum login         → Welcome (untuk login)
+    // - 1 akun tersimpan   → Loading langsung (no friction)
+    // - 2+ akun tersimpan  → Welcome (untuk pilih akun)
+    val knownAccounts = multiStorage.getKnownPuuids()
+    val destination = when {
+        !tokenStorage.isLoggedIn          -> Screen.Welcome.route
+        knownAccounts.size > 1            -> Screen.Welcome.route
+        else                              -> Screen.Loading.route   // 1 akun, langsung masuk
+    }
 
-    // Navigate after image loads (or fallback after 4s)
+    // Navigate after image loads
     LaunchedEffect(imageReady) {
         if (!imageReady) return@LaunchedEffect
         delay(1500L)

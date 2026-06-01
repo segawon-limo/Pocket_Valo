@@ -75,17 +75,24 @@ class RiotAuthRepository(
             try {
                 android.util.Log.d("RiotAuth", "Exchanging code for tokens...")
                 val tokenResp = exchangeCode(code)
-                android.util.Log.d("RiotAuth", "Token response: accessToken=${tokenResp?.accessToken?.take(10)}, error=${tokenResp?.error}")
+                android.util.Log.d(
+                    "RiotAuth",
+                    "Token response: accessToken=${tokenResp?.accessToken?.take(10)}, error=${tokenResp?.error}"
+                )
                 if (tokenResp == null) return@withContext AuthResult.Failure(Exception("Token exchange failed"))
 
                 if (tokenResp.accessToken == null || tokenResp.refreshToken == null) {
-                    return@withContext AuthResult.Failure(Exception(tokenResp.error ?: "No tokens in response"))
+                    return@withContext AuthResult.Failure(
+                        Exception(
+                            tokenResp.error ?: "No tokens in response"
+                        )
+                    )
                 }
 
                 tokenStorage.saveTokens(
-                    accessToken      = tokenResp.accessToken,
-                    idToken          = tokenResp.idToken ?: "",
-                    refreshToken     = tokenResp.refreshToken,
+                    accessToken = tokenResp.accessToken,
+                    idToken = tokenResp.idToken ?: "",
+                    refreshToken = tokenResp.refreshToken,
                     expiresInSeconds = tokenResp.expiresIn ?: 3600
                 )
 
@@ -100,29 +107,40 @@ class RiotAuthRepository(
                 val userInfo = fetchUserInfo()
                     ?: return@withContext AuthResult.Failure(Exception("Failed to fetch user info"))
 
-                val puuid    = userInfo.puuid    ?: return@withContext AuthResult.Failure(Exception("No puuid in userinfo"))
-                val gameName = userInfo.account?.gameName ?: return@withContext AuthResult.Failure(Exception("No gameName"))
-                val tagLine  = userInfo.account?.tagLine  ?: return@withContext AuthResult.Failure(Exception("No tagLine"))
+                val puuid = userInfo.puuid
+                    ?: return@withContext AuthResult.Failure(Exception("No puuid in userinfo"))
+                val gameName = userInfo.account?.gameName ?: return@withContext AuthResult.Failure(
+                    Exception("No gameName")
+                )
+                val tagLine = userInfo.account?.tagLine ?: return@withContext AuthResult.Failure(
+                    Exception("No tagLine")
+                )
 
-                tokenStorage.puuid    = puuid
+                tokenStorage.puuid = puuid
                 tokenStorage.username = "$gameName#$tagLine"
 
                 // Save to MultiAccountTokenStorage — activePuuid TIDAK diset di sini
                 multiStorage?.saveAccount(
-                    puuid            = puuid,
-                    accessToken      = tokenResp.accessToken,
-                    idToken          = tokenResp.idToken ?: "",
-                    refreshToken     = tokenResp.refreshToken,
+                    puuid = puuid,
+                    accessToken = tokenResp.accessToken,
+                    idToken = tokenResp.idToken ?: "",
+                    refreshToken = tokenResp.refreshToken,
                     entitlementToken = entitlement,
-                    region           = region,
-                    username         = "$gameName#$tagLine",
+                    region = region,
+                    username = "$gameName#$tagLine",
                     expiresInSeconds = tokenResp.expiresIn ?: 3600
                 )
 
-                android.util.Log.d("RiotAuth", "Login complete: $gameName#$tagLine, region: $region")
+                android.util.Log.d(
+                    "RiotAuth",
+                    "Login complete: $gameName#$tagLine, region: $region"
+                )
                 AuthResult.Success(NewAccountData(puuid, gameName, tagLine, region))
             } catch (e: Exception) {
-                android.util.Log.e("RiotAuth", "loginWithCode exception: ${e::class.simpleName}: ${e.message}")
+                android.util.Log.e(
+                    "RiotAuth",
+                    "loginWithCode exception: ${e::class.simpleName}: ${e.message}"
+                )
                 AuthResult.Failure(e)
             }
         }
@@ -160,10 +178,10 @@ class RiotAuthRepository(
                 multiStorage?.let { ms ->
                     val puuid = tokenStorage.puuid ?: return@let
                     ms.updateTokens(
-                        puuid            = puuid,
-                        accessToken      = tokenResp.accessToken,
-                        idToken          = tokenResp.idToken,
-                        refreshToken     = tokenResp.refreshToken ?: refreshToken,
+                        puuid = puuid,
+                        accessToken = tokenResp.accessToken,
+                        idToken = tokenResp.idToken,
+                        refreshToken = tokenResp.refreshToken ?: refreshToken,
                         entitlementToken = entitlement,
                         expiresInSeconds = tokenResp.expiresIn ?: 3600
                     )
@@ -201,10 +219,10 @@ class RiotAuthRepository(
                 val entitlement = fetchEntitlementWithToken(tokenResp.accessToken)
 
                 ms.updateTokens(
-                    puuid            = puuid,
-                    accessToken      = tokenResp.accessToken,
-                    idToken          = tokenResp.idToken,
-                    refreshToken     = tokenResp.refreshToken ?: refreshToken,
+                    puuid = puuid,
+                    accessToken = tokenResp.accessToken,
+                    idToken = tokenResp.idToken,
+                    refreshToken = tokenResp.refreshToken ?: refreshToken,
                     entitlementToken = entitlement,
                     expiresInSeconds = tokenResp.expiresIn ?: 3600
                 )
@@ -212,9 +230,9 @@ class RiotAuthRepository(
                 // If this is the active account, sync to TokenStorage too
                 if (ms.activePuuid == puuid) {
                     tokenStorage.saveTokens(
-                        accessToken      = tokenResp.accessToken,
-                        idToken          = tokenResp.idToken ?: tokenStorage.idToken ?: "",
-                        refreshToken     = tokenResp.refreshToken ?: refreshToken,
+                        accessToken = tokenResp.accessToken,
+                        idToken = tokenResp.idToken ?: tokenStorage.idToken ?: "",
+                        refreshToken = tokenResp.refreshToken ?: refreshToken,
                         expiresInSeconds = tokenResp.expiresIn ?: 3600
                     )
                     if (entitlement != null) tokenStorage.entitlementToken = entitlement
@@ -310,7 +328,10 @@ class RiotAuthRepository(
             if (!response.isSuccessful) return null
             gson.fromJson(body, T::class.java)
         } catch (e: Exception) {
-            android.util.Log.e("RiotAuth", "Request failed (${request.url}): ${e::class.simpleName}: ${e.message}")
+            android.util.Log.e(
+                "RiotAuth",
+                "Request failed (${request.url}): ${e::class.simpleName}: ${e.message}"
+            )
             null
         }
     }
@@ -321,5 +342,160 @@ class RiotAuthRepository(
 
     companion object {
         const val RIOT_USER_AGENT = "ShooterGame/13 Windows/10.0.19043.1.256.64bit"
+    }
+
+    // ── Native credential login ──────────────────────────────────────────────
+
+    suspend fun loginWithCredentials(
+        username: String,
+        password: String
+    ): AuthResult<NewAccountData> {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Cookie jar untuk maintain session antara requests
+                val cookieStore = mutableListOf<okhttp3.Cookie>()
+                val cookieJar = object : okhttp3.CookieJar {
+                    override fun saveFromResponse(
+                        url: okhttp3.HttpUrl,
+                        cookies: List<okhttp3.Cookie>
+                    ) {
+                        cookieStore.removeAll { c -> cookies.any { it.name == c.name } }
+                        cookieStore.addAll(cookies)
+                    }
+
+                    override fun loadForRequest(url: okhttp3.HttpUrl) = cookieStore.toList()
+                }
+
+                val authClient = OkHttpClient.Builder()
+                    .cookieJar(cookieJar)
+                    .addInterceptor { chain ->
+                        chain.proceed(
+                            chain.request().newBuilder()
+                                .header("User-Agent", RIOT_USER_AGENT)
+                                .header("Content-Type", "application/json")
+                                .build()
+                        )
+                    }
+                    .build()
+
+                // Step 1: Init auth session
+                val initJson = "{\"client_id\":\"play-valorant-web-prod\"," +
+                        "\"nonce\":\"1\"," +
+                        "\"redirect_uri\":\"https://playvalorant.com/opt_in\"," +
+                        "\"response_type\":\"token id_token\"," +
+                        "\"scope\":\"account openid\"}"
+
+                val initReq = Request.Builder()
+                    .url("https://auth.riotgames.com/api/v1/authorization")
+                    .post(initJson.toRequestBody("application/json".toMediaType()))
+                    .build()
+
+                val initResp = authClient.newCall(initReq).execute()
+                android.util.Log.d("RiotAuth", "Init auth: ${initResp.code}")
+                initResp.body?.close()
+
+                // Step 2: Submit credentials
+                val credJson = "{\"language\":\"en_US\"," +
+                        "\"password\":\"${password.replace("\"", "\\\"")}\"," +
+                        "\"remember\":false," +
+                        "\"type\":\"auth\"," +
+                        "\"username\":\"${username.replace("\"", "\\\"")}\"}"
+
+                val credReq = Request.Builder()
+                    .url("https://auth.riotgames.com/api/v1/authorization")
+                    .put(credJson.toRequestBody("application/json".toMediaType()))
+                    .build()
+
+                val credResp = authClient.newCall(credReq).execute()
+                val credBodyStr = credResp.body?.string() ?: ""
+                android.util.Log.d(
+                    "RiotAuth",
+                    "Cred response ${credResp.code}: ${credBodyStr.take(300)}"
+                )
+
+                val respJson = gson.fromJson(credBodyStr, com.google.gson.JsonObject::class.java)
+                val responseType = respJson.get("type")?.asString
+
+                when (responseType) {
+                    "multifactor" -> return@withContext AuthResult.Failure(Exception("MFA_REQUIRED"))
+                    "auth" -> {
+                        val errorCode = respJson.get("error")?.asString
+                        return@withContext AuthResult.Failure(
+                            Exception(
+                                when (errorCode) {
+                                    "auth_failure" -> "Wrong username or password"
+                                    "rate_limited" -> "Too many attempts. Please wait."
+                                    else -> "Login failed: $errorCode"
+                                }
+                            )
+                        )
+                    }
+                }
+
+                // Extract tokens dari URI fragment
+                val uri = respJson.getAsJsonObject("response")
+                    ?.getAsJsonObject("parameters")
+                    ?.get("uri")?.asString
+                    ?: return@withContext AuthResult.Failure(Exception("No redirect URI"))
+
+                val fragment = android.net.Uri.parse(uri).fragment ?: ""
+                val params = fragment.split("&").mapNotNull {
+                    val parts = it.split("=", limit = 2)
+                    if (parts.size == 2) parts[0] to java.net.URLDecoder.decode(parts[1], "UTF-8")
+                    else null
+                }.toMap()
+
+                val accessToken = params["access_token"]
+                    ?: return@withContext AuthResult.Failure(Exception("No access_token"))
+                val idToken = params["id_token"] ?: ""
+                val expiresIn = params["expires_in"]?.toIntOrNull() ?: 3600
+
+                tokenStorage.saveTokens(
+                    accessToken = accessToken,
+                    idToken = idToken,
+                    refreshToken = "",
+                    expiresInSeconds = expiresIn
+                )
+
+                val entitlement = fetchEntitlement()
+                    ?: return@withContext AuthResult.Failure(Exception("Failed to fetch entitlement"))
+                tokenStorage.entitlementToken = entitlement
+
+                val region = fetchRegion(idToken)
+                    ?: return@withContext AuthResult.Failure(Exception("Failed to fetch region"))
+                tokenStorage.region = region
+
+                val userInfo = fetchUserInfo()
+                    ?: return@withContext AuthResult.Failure(Exception("Failed to fetch user info"))
+
+                val puuid =
+                    userInfo.puuid ?: return@withContext AuthResult.Failure(Exception("No puuid"))
+                val gameName = userInfo.account?.gameName ?: return@withContext AuthResult.Failure(
+                    Exception("No gameName")
+                )
+                val tagLine = userInfo.account?.tagLine ?: return@withContext AuthResult.Failure(
+                    Exception("No tagLine")
+                )
+
+                tokenStorage.puuid = puuid
+                tokenStorage.username = "$gameName#$tagLine"
+
+                multiStorage?.saveAccount(
+                    puuid = puuid,
+                    accessToken = accessToken,
+                    idToken = idToken,
+                    refreshToken = "",
+                    entitlementToken = entitlement,
+                    region = region,
+                    username = "$gameName#$tagLine",
+                    expiresInSeconds = expiresIn
+                )
+
+                AuthResult.Success(NewAccountData(puuid, gameName, tagLine, region))
+            } catch (e: Exception) {
+                android.util.Log.e("RiotAuth", "loginWithCredentials error: ${e.message}")
+                AuthResult.Failure(e)
+            }
+        }
     }
 }

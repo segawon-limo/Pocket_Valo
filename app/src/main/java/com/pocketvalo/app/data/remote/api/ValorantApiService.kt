@@ -37,4 +37,15 @@ interface ValorantApiService {
 
     @GET("v1/levelborders")
     suspend fun getLevelBorders(): Response<LevelBorderResponse>
+
+    @GET("v1/bundles/{uuid}")
+    suspend fun getBundle(
+        @Path("uuid") uuid: String
+    ): Response<com.pocketvalo.app.data.model.BundleDetailResponse>
+
+    @GET("v1/bundles/{uuid}")
+    suspend fun getBundleRaw(
+        @Path("uuid") uuid: String
+    ): Response<okhttp3.ResponseBody>
 }
+// Extension — tambah setelah interface original (file di-append)
