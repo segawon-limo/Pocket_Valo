@@ -379,20 +379,22 @@ class RiotAuthRepository(
                     .build()
 
                 // Step 1: Init auth session
-                val initJson = "{\"client_id\":\"play-valorant-web-prod\"," +
-                        "\"nonce\":\"1\"," +
-                        "\"redirect_uri\":\"https://playvalorant.com/opt_in\"," +
-                        "\"response_type\":\"token id_token\"," +
-                        "\"scope\":\"account openid\"}"
+                val initPayload = org.json.JSONObject().apply {
+                    put("client_id", "play-valorant-web-prod")
+                    put("nonce", "1")
+                    put("redirect_uri", "https://playvalorant.com/opt_in")
+                    put("response_type", "token id_token")
+                    put("scope", "account openid")
+                }
 
                 val initReq = Request.Builder()
                     .url("https://auth.riotgames.com/api/v1/authorization")
-                    .post(initJson.toRequestBody("application/json".toMediaType()))
+                    .post(initPayload.toString().toRequestBody("application/json".toMediaType()))
                     .build()
 
                 val initResp = authClient.newCall(initReq).execute()
-                android.util.Log.d("RiotAuth", "Init auth: ${initResp.code}")
-                initResp.body?.close()
+                val initBodyStr = initResp.body?.string() ?: ""
+                android.util.Log.d("RiotAuth", "Init auth: ${initResp.code} body=$initBodyStr")
 
                 // Step 2: Submit credentials
                 val credJson = "{\"language\":\"en_US\"," +
@@ -408,10 +410,7 @@ class RiotAuthRepository(
 
                 val credResp = authClient.newCall(credReq).execute()
                 val credBodyStr = credResp.body?.string() ?: ""
-                android.util.Log.d(
-                    "RiotAuth",
-                    "Cred response ${credResp.code}: ${credBodyStr.take(300)}"
-                )
+                android.util.Log.d("RiotAuth", "Cred response ${credResp.code}: $credBodyStr")
 
                 val respJson = gson.fromJson(credBodyStr, com.google.gson.JsonObject::class.java)
                 val responseType = respJson.get("type")?.asString
