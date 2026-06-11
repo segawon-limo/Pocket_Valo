@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/segawon-limo/Pocket_Valo/app/release/latest">
+  <a href="https://github.com/segawon-limo/Pocket_Valo/releases/latest">
     <img src="https://img.shields.io/badge/Download-v1.0.0-FF4655?style=flat-square&logo=android&logoColor=white" alt="Download">
   </a>
 </p>
