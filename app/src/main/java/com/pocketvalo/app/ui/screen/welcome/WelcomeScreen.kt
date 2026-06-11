@@ -27,6 +27,10 @@ import com.pocketvalo.app.data.local.MultiAccountTokenStorage
 import com.pocketvalo.app.data.local.TokenStorage
 import com.pocketvalo.app.data.local.entity.AccountEntity
 import com.pocketvalo.app.ui.navigation.Screen
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
+import com.pocketvalo.app.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,24 +109,59 @@ fun WelcomeScreen(navController: NavController) {
                     )
                 }
 
-                Spacer(modifier = Modifier.height(28.dp))
+//                Spacer(modifier = Modifier.height(28.dp))
+//
+//                Text(
+//                    text          = "POCKET",
+//                    color         = Color.White,
+//                    fontSize      = 52.sp,
+//                    fontWeight    = FontWeight.ExtraBold,
+//                    lineHeight    = 52.sp,
+//                    letterSpacing = (-1).sp
+//                )
+//                Text(
+//                    text          = "VALO",
+//                    color         = Color(0xFFFF4655),
+//                    fontSize      = 52.sp,
+//                    fontWeight    = FontWeight.ExtraBold,
+//                    lineHeight    = 52.sp,
+//                    letterSpacing = (-1).sp
+//                )
 
-                Text(
-                    text          = "POCKET",
-                    color         = Color.White,
-                    fontSize      = 52.sp,
-                    fontWeight    = FontWeight.ExtraBold,
-                    lineHeight    = 52.sp,
-                    letterSpacing = (-1).sp
-                )
-                Text(
-                    text          = "VALO",
-                    color         = Color(0xFFFF4655),
-                    fontSize      = 52.sp,
-                    fontWeight    = FontWeight.ExtraBold,
-                    lineHeight    = 52.sp,
-                    letterSpacing = (-1).sp
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    Image(
+                        painter = painterResource(R.drawable.pocket_valo_icon),
+                        contentDescription = "Pocket Valo Logo",
+                        modifier = Modifier.size(90.dp),
+                        contentScale = ContentScale.Fit
+                    )
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column {
+
+                        Text(
+                            text = "POCKET",
+                            color = Color.White,
+                            fontSize = 52.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            lineHeight = 52.sp,
+                            letterSpacing = (-1).sp
+                        )
+
+                        Text(
+                            text = "VALO",
+                            color = Color(0xFFFF4655),
+                            fontSize = 52.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            lineHeight = 52.sp,
+                            letterSpacing = (-1).sp
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(20.dp))
 
@@ -183,35 +222,7 @@ fun WelcomeScreen(navController: NavController) {
                     modifier  = Modifier.fillMaxWidth()
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
 
-                // Tombol alternatif: native login (username/password langsung)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF1A2332))
-                        .clickable {
-                            navController.navigate(com.pocketvalo.app.ui.navigation.Screen.NativeLogin.route)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text          = "Sign in with username & password",
-                        color         = Color(0xFF9BA3AF),
-                        fontSize      = 13.sp,
-                        fontWeight    = FontWeight.Medium
-                    )
-                }
-
-                Text(
-                    text      = "Alternative login (experimental)",
-                    color     = Color(0xFF3A4A5C),
-                    fontSize  = 11.sp,
-                    textAlign = TextAlign.Center,
-                    modifier  = Modifier.fillMaxWidth()
-                )
             }
         }
     }

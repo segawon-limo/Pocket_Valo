@@ -18,6 +18,10 @@ class AssetsRepository private constructor() {
     private var cachedWeapons: List<WeaponData> = emptyList()
     private var cachedLevelBorders: List<LevelBorderData> = emptyList()
 
+    // Riot client version — di-fetch dari valorant-api.com/v1/version saat loading
+    // Dipakai oleh StoreRepository untuk header X-Riot-ClientVersion
+    @Volatile var clientVersion: String = ""
+
     // ── Singleton ─────────────────────────────────────────────────────────────
 
     // ── Bundle detail ─────────────────────────────────────────────────────────
@@ -192,6 +196,24 @@ class AssetsRepository private constructor() {
     suspend fun prefetchWeapons(): Result<List<WeaponData>> = getWeapons()
 
     // ── Weapons ───────────────────────────────────────────────────────────────
+
+    suspend fun fetchClientVersion(): Result<String> {
+        return try {
+            val response = RetrofitClient.valorantApi.getVersion()
+            val version  = response.body()?.data?.riotClientVersion
+            if (response.isSuccessful && version != null) {
+                clientVersion = version
+                android.util.Log.d("AssetsRepository", "Client version fetched: $version")
+                Result.Success(version)
+            } else {
+                android.util.Log.w("AssetsRepository", "Version fetch failed, using cached: $clientVersion")
+                Result.Success(clientVersion.ifEmpty { "unknown" })
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AssetsRepository", "fetchClientVersion error: ${e.message}")
+            Result.Error(e.message ?: "Failed to fetch client version")
+        }
+    }
 
     suspend fun getWeapons(): Result<List<WeaponData>> {
         if (cachedWeapons.isNotEmpty()) return Result.Success(cachedWeapons)

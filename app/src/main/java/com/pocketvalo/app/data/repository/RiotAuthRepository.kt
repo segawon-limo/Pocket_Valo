@@ -380,11 +380,11 @@ class RiotAuthRepository(
 
                 // Step 1: Init auth session
                 val initPayload = org.json.JSONObject().apply {
-                    put("client_id", "play-valorant-web-prod")
+                    put("client_id", "riot-client")
                     put("nonce", "1")
-                    put("redirect_uri", "https://playvalorant.com/opt_in")
+                    put("redirect_uri", "http://localhost/redirect")
                     put("response_type", "token id_token")
-                    put("scope", "account openid")
+                    put("scope", "openid offline_access lol ban profile email phone account")
                 }
 
                 val initReq = Request.Builder()
@@ -395,40 +395,57 @@ class RiotAuthRepository(
                 val initResp = authClient.newCall(initReq).execute()
                 val initBodyStr = initResp.body?.string() ?: ""
                 android.util.Log.d("RiotAuth", "Init auth: ${initResp.code} body=$initBodyStr")
+                android.util.Log.d("RiotAuth", "Cookies after init: ${cookieStore.map { "${it.name}=${it.value.take(10)}" }}")
 
-                // Step 2: Submit credentials
-                val credJson = "{\"language\":\"en_US\"," +
-                        "\"password\":\"${password.replace("\"", "\\\"")}\"," +
-                        "\"remember\":false," +
-                        "\"type\":\"auth\"," +
-                        "\"username\":\"${username.replace("\"", "\\\"")}\"}"
+                if (!initResp.isSuccessful) {
+                    return@withContext AuthResult.Failure(Exception("Auth init failed: ${initResp.code}"))
+                }
+
+                // Step 2: Submit credentials — pakai JSONObject untuk proper escaping
+                val credPayload = org.json.JSONObject().apply {
+                    put("language", "en_US")
+                    put("password", password)
+                    put("remember", false)
+                    put("type", "auth")
+                    put("username", username)
+                }
+                android.util.Log.d("RiotAuth", "Sending credentials: username='$username' password_len=${password.length} password_bytes=${password.toByteArray(Charsets.UTF_8).take(4).map { it.toInt() }}")
+                android.util.Log.d("RiotAuth", "Cred JSON: ${credPayload}")
 
                 val credReq = Request.Builder()
                     .url("https://auth.riotgames.com/api/v1/authorization")
-                    .put(credJson.toRequestBody("application/json".toMediaType()))
+                    .put(credPayload.toString().toRequestBody("application/json".toMediaType()))
                     .build()
 
                 val credResp = authClient.newCall(credReq).execute()
                 val credBodyStr = credResp.body?.string() ?: ""
                 android.util.Log.d("RiotAuth", "Cred response ${credResp.code}: $credBodyStr")
 
-                val respJson = gson.fromJson(credBodyStr, com.google.gson.JsonObject::class.java)
+                val respJson = try {
+                    gson.fromJson(credBodyStr, com.google.gson.JsonObject::class.java)
+                } catch (e: Exception) {
+                    return@withContext AuthResult.Failure(Exception("Invalid response from Riot"))
+                }
                 val responseType = respJson.get("type")?.asString
 
                 when (responseType) {
                     "multifactor" -> return@withContext AuthResult.Failure(Exception("MFA_REQUIRED"))
                     "auth" -> {
+                        // type=auth tanpa "response" field = error
                         val errorCode = respJson.get("error")?.asString
                         return@withContext AuthResult.Failure(
                             Exception(
                                 when (errorCode) {
                                     "auth_failure" -> "Wrong username or password"
                                     "rate_limited" -> "Too many attempts. Please wait."
-                                    else -> "Login failed: $errorCode"
+                                    "invalid_session" -> "Session expired, please try again"
+                                    else -> "Login failed: ${errorCode ?: "unknown"}"
                                 }
                             )
                         )
                     }
+                    null -> return@withContext AuthResult.Failure(Exception("Unexpected response: $credBodyStr"))
+                    // "response" type = sukses, lanjut extract token
                 }
 
                 // Extract tokens dari URI fragment

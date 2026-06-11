@@ -47,5 +47,8 @@ interface ValorantApiService {
     suspend fun getBundleRaw(
         @Path("uuid") uuid: String
     ): Response<okhttp3.ResponseBody>
+
+    @GET("v1/version")
+    suspend fun getVersion(): Response<com.pocketvalo.app.data.model.VersionResponse>
 }
 // Extension — tambah setelah interface original (file di-append)

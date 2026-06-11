@@ -5,6 +5,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.*
@@ -13,12 +15,17 @@ import com.pocketvalo.app.R
 import com.pocketvalo.app.data.local.AppDatabase
 import com.pocketvalo.app.data.local.MultiAccountTokenStorage
 import com.pocketvalo.app.data.local.TokenStorage
+import com.pocketvalo.app.data.local.entity.WatchlistEntity
+import com.pocketvalo.app.data.repository.AssetsRepository
 import com.pocketvalo.app.data.repository.AuthResult
 import com.pocketvalo.app.data.repository.RiotAuthRepository
 import com.pocketvalo.app.data.repository.StoreRepository
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.net.URL
 import java.util.Calendar
 import java.util.TimeZone
+import java.util.concurrent.TimeUnit
 
 class WatchlistWorker(
     private val context: Context,
@@ -32,38 +39,65 @@ class WatchlistWorker(
         val authRepo     = RiotAuthRepository(tokenStorage, multiStorage)
 
         val activePuuid = multiStorage.activePuuid ?: tokenStorage.puuid
-        ?: return Result.success() // Tidak ada akun, skip
+        ?: return Result.success()
 
-        // Cek watchlist akun aktif dulu
         val watchlist = db.watchlistDao().getWatchlistForAccountOnce(activePuuid)
         if (watchlist.isEmpty()) return Result.success()
 
-        // Ensure token valid
         val tokenResult = authRepo.ensureValidToken()
         if (tokenResult is AuthResult.Failure) return Result.retry()
 
-        // Fetch store
-        val storeRepo = StoreRepository(tokenStorage, authRepo, db.storeDao())
+        val storeRepo   = StoreRepository(tokenStorage, authRepo, db.storeDao())
         val storeResult = storeRepo.getStore(forceRefresh = true)
         if (storeResult is AuthResult.Failure) return Result.retry()
 
-        val store = (storeResult as AuthResult.Success).data
-
-        // Match: store skin level UUIDs vs watchlist level UUIDs
+        val store           = (storeResult as AuthResult.Success).data
         val storeLevelUuids = store.skinUuids.toSet()
-        val matches = watchlist.filter { it.levelUuid in storeLevelUuids }
+        val matches         = watchlist.filter { it.levelUuid in storeLevelUuids }
 
         if (matches.isNotEmpty()) {
-            sendNotification(matches.map { it.displayName })
+            // Satu skin match — tampilkan dengan gambar
+            // Banyak skin match — tampilkan satu per satu dengan notif ID berbeda
+            matches.forEachIndexed { index, skin ->
+                val bitmap = downloadBitmap(skin.iconUrl)
+                sendNotification(
+                    id       = NOTIF_ID + index,
+                    skin     = skin,
+                    bitmap   = bitmap,
+                    total    = matches.size,
+                    position = index + 1
+                )
+            }
         }
 
         return Result.success()
     }
 
-    private fun sendNotification(skinNames: List<String>) {
+    private suspend fun downloadBitmap(url: String?): Bitmap? {
+        if (url.isNullOrBlank()) return null
+        return withContext(Dispatchers.IO) {
+            try {
+                val connection = URL(url).openConnection().apply {
+                    connectTimeout = 5000
+                    readTimeout    = 5000
+                }
+                BitmapFactory.decodeStream(connection.getInputStream())
+            } catch (e: Exception) {
+                android.util.Log.w("WatchlistWorker", "Failed to download skin image: ${e.message}")
+                null
+            }
+        }
+    }
+
+    private fun sendNotification(
+        id: Int,
+        skin: WatchlistEntity,
+        bitmap: Bitmap?,
+        total: Int,
+        position: Int
+    ) {
         val notifManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        // Create channel (required API 26+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
@@ -80,31 +114,42 @@ class WatchlistWorker(
             putExtra("navigate_to", "store")
         }
         val pendingIntent = PendingIntent.getActivity(
-            context, 0, intent,
+            context, id, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val title = if (skinNames.size == 1)
-            "🛒 ${skinNames[0]} ada di store!"
+        val title = if (total == 1)
+            "🛒 ${skin.displayName} ada di store!"
         else
-            "🛒 ${skinNames.size} skin wishlist ada di store!"
+            "🛒 ${skin.displayName} ($position/$total skin wishlist)"
 
-        val body = if (skinNames.size == 1)
-            "Skin favoritmu muncul di Daily Store hari ini."
-        else
-            skinNames.joinToString(", ")
+        val body = "Skin favoritmu muncul di Daily Store hari ini. Jangan sampai kehabisan!"
 
-        val notif = NotificationCompat.Builder(context, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .build()
 
-        notifManager.notify(NOTIF_ID, notif)
+        if (bitmap != null) {
+            // BigPictureStyle — gambar skin ditampilkan besar di notifikasi
+            builder.setStyle(
+                NotificationCompat.BigPictureStyle()
+                    .bigPicture(bitmap)
+                    .bigLargeIcon(null as Bitmap?) // hide large icon saat expanded
+                    .setBigContentTitle(title)
+                    .setSummaryText(body)
+            )
+            // LargeIcon — thumbnail skin di sebelah teks (saat collapsed)
+            builder.setLargeIcon(bitmap)
+        } else {
+            // Fallback tanpa gambar
+            builder.setStyle(NotificationCompat.BigTextStyle().bigText(body))
+        }
+
+        notifManager.notify(id, builder.build())
     }
 
     companion object {
@@ -112,18 +157,13 @@ class WatchlistWorker(
         const val NOTIF_ID   = 1001
         const val WORK_NAME  = "watchlist_daily_check"
 
-        /**
-         * Schedule daily check pada 00:30 UTC.
-         * Menghitung delay dari sekarang ke 00:30 UTC berikutnya.
-         */
         fun schedule(context: Context) {
-            val now = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+            val now    = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
             val target = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
                 set(Calendar.HOUR_OF_DAY, 0)
                 set(Calendar.MINUTE, 30)
                 set(Calendar.SECOND, 0)
                 set(Calendar.MILLISECOND, 0)
-                // Kalau 00:30 UTC hari ini sudah lewat, jadwalkan besok
                 if (before(now)) add(Calendar.DAY_OF_YEAR, 1)
             }
 
@@ -140,7 +180,7 @@ class WatchlistWorker(
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP, // jangan reschedule kalau sudah ada
+                ExistingPeriodicWorkPolicy.KEEP,
                 request
             )
         }

@@ -44,6 +44,16 @@ fun StoreScreen(
 ) {
     val uiState by storeViewModel.uiState.collectAsState()
 
+    // Reset sessionExpired yang mungkin ter-set sebelum login selesai
+    // LaunchedEffect(Unit) dipanggil sekali saat StoreScreen pertama di-compose
+    // Ini memastikan state stale tidak langsung trigger redirect ke login
+    LaunchedEffect(Unit) {
+        if (uiState.sessionExpired) {
+            storeViewModel.resetSessionExpired()
+            storeViewModel.loadStore(forceRefresh = true)
+        }
+    }
+
     LaunchedEffect(uiState.sessionExpired) {
         if (uiState.sessionExpired) {
             navController?.navigate(com.pocketvalo.app.ui.navigation.Screen.Login.route) {

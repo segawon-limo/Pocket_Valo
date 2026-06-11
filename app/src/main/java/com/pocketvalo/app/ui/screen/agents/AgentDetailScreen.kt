@@ -192,7 +192,7 @@ fun AbilityCard(ability: AgentAbility) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(if (isUltimate) Color(0xFF2A1A1A) else Color(0xFF1A2332))
+            .background(if (isUltimate) Color(0xFF0A524A) else Color(0xFF1A2332))
             .padding(12.dp),
         verticalAlignment = Alignment.Top
     ) {
@@ -224,12 +224,12 @@ fun AbilityCard(ability: AgentAbility) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text       = "ULTIMATE",
-                        color      = Color(0xFFFF4655),
+                        color      = Color(0xFF48E3B9),
                         fontSize   = 10.sp,
                         fontWeight = FontWeight.Bold,
                         modifier   = Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0x33FF4655))
+                            .background(Color(0xFF198072))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }

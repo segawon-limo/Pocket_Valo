@@ -127,6 +127,11 @@ class MultiAccountTokenStorage(context: Context) {
         return raw.split(",").filter { it.isNotBlank() }
     }
 
+    /** Clear semua data — dipanggil saat deteksi stale MIUI backup */
+    fun clearAll() {
+        prefs.edit().clear().apply()
+    }
+
     // ── Active account convenience getters ────────────────────────────────────
 
     val activeAccessToken get() = activePuuid?.let { getAccessToken(it) }

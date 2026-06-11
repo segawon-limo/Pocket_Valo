@@ -87,6 +87,11 @@ class WeaponsViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** Dipanggil dari LoadingViewModel setelah fetchPlayerLoadout() untuk avoid double API call */
+    fun setEquippedSkins(skins: Map<String, String>) {
+        _uiState.value = _uiState.value.copy(equippedSkins = skins)
+    }
+
     fun fetchEquippedSkins() {
         if (!tokenStorage.isLoggedIn) return
         viewModelScope.launch {

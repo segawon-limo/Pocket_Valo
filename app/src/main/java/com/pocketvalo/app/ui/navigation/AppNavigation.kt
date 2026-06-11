@@ -1,6 +1,7 @@
 package com.pocketvalo.app.ui.navigation
 
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Home
@@ -42,37 +43,40 @@ import com.pocketvalo.app.ui.viewmodel.PlayerViewModel
 import com.pocketvalo.app.ui.viewmodel.StoreViewModel
 import com.pocketvalo.app.ui.viewmodel.WatchlistViewModel
 import com.pocketvalo.app.ui.viewmodel.WeaponsViewModel
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.res.painterResource
+import com.pocketvalo.app.R
 
 sealed class Screen(val route: String) {
-    object Splash      : Screen("splash")
-    object Welcome     : Screen("welcome")
-    object Login       : Screen("login")
-    object AddAccount  : Screen("add_account")
-    object Loading     : Screen("loading")
-    object Input       : Screen("input")
-    object Home        : Screen("home")
-    object Store       : Screen("store")
-    object Match       : Screen("match/{matchId}") {
+    object Splash       : Screen("splash")
+    object Welcome      : Screen("welcome")
+    object Login        : Screen("login")
+    object AddAccount   : Screen("add_account")
+    object Loading      : Screen("loading")
+    object Input        : Screen("input")
+    object Home         : Screen("home")
+    object Store        : Screen("store")
+    object Match        : Screen("match/{matchId}") {
         fun createRoute(matchId: String) = "match/$matchId"
     }
-    object Account     : Screen("account")
-    object Agents      : Screen("agents")
-    object Weapons     : Screen("weapons")
-    object NightMarket : Screen("night_market")
+    object Account      : Screen("account")
+    object Agents       : Screen("agents")
+    object Weapons      : Screen("weapons")
+    object NightMarket  : Screen("night_market")
     object BundleDetail : Screen("bundle_detail/{uuid}/{duration}/{basePrice}/{discPrice}") {
-        fun createRoute(uuid: String, duration: Long, basePrice: Int, discPrice: Int) = "bundle_detail/$uuid/$duration/$basePrice/$discPrice"
+        fun createRoute(uuid: String, duration: Long, basePrice: Int, discPrice: Int) =
+            "bundle_detail/$uuid/$duration/$basePrice/$discPrice"
     }
-    object Watchlist   : Screen("watchlist")
-    object NativeLogin : Screen("native_login")
-    object NativeLoginAdd : Screen("native_login_add")
-    object AgentDetail : Screen("agent/{agentId}") {
+    object Watchlist    : Screen("watchlist")
+    object AgentDetail  : Screen("agent/{agentId}") {
         fun createRoute(agentId: String) = "agent/$agentId"
     }
 }
 
 data class BottomNavItem(
     val route: String,
-    val icon: ImageVector,
+//    val icon: ImageVector,
+    val icon: Painter,
     val label: String
 )
 
@@ -82,8 +86,8 @@ fun AppNavigation(
 ) {
     val playerViewModel: PlayerViewModel   = viewModel()
     val accountViewModel: AccountViewModel = viewModel()
-    // Shared StoreViewModel — supaya cache bundle/NM tidak hilang saat navigate antar store screens
     val storeViewModel: StoreViewModel     = viewModel()
+    val weaponsViewModel: WeaponsViewModel  = viewModel()
 
     LaunchedEffect(Unit) {
         accountViewModel.onNavigateToLoading = {
@@ -125,24 +129,17 @@ fun AppNavigation(
             composable(Screen.Login.route) { LoginScreen(navController) }
             composable(Screen.AddAccount.route) {
                 LoginScreen(
-                    navController = navController,
-                    isAddAccount  = true
+                    navController   = navController,
+                    isAddAccount    = true,
+                    onSwitchAccount = { playerViewModel.resetForSwitch() }
                 )
             }
-            composable(Screen.NativeLogin.route) {
-                com.pocketvalo.app.ui.screen.nativelogin.NativeLoginScreen(navController)
+            composable(Screen.Loading.route) {
+                LoadingScreen(navController, playerViewModel, storeViewModel, weaponsViewModel)
             }
-            composable(Screen.NativeLoginAdd.route) {
-                com.pocketvalo.app.ui.screen.nativelogin.NativeLoginScreen(
-                    navController = navController,
-                    isAddAccount  = true
-                )
-            }
-            composable(Screen.Loading.route) { LoadingScreen(navController, playerViewModel) }
             composable(Screen.Input.route)   { InputScreen(navController, playerViewModel) }
             composable(Screen.Home.route)    { HomeScreen(navController, playerViewModel) }
 
-            // Store — pakai shared storeViewModel
             composable(Screen.Store.route) {
                 StoreScreen(storeViewModel = storeViewModel, navController = navController)
             }
@@ -157,7 +154,6 @@ fun AppNavigation(
                 val duration  = backStackEntry.arguments?.getString("duration")?.toLongOrNull() ?: 0L
                 val basePrice = backStackEntry.arguments?.getString("basePrice")?.toIntOrNull() ?: 0
                 val discPrice = backStackEntry.arguments?.getString("discPrice")?.toIntOrNull() ?: 0
-                // skinItems tidak bisa di-pass via route — ambil dari storeViewModel.uiState
                 val skinItems = storeViewModel.uiState.value.store?.bundles
                     ?.firstOrNull { it.uuid == uuid }?.skinItems ?: emptyList()
                 com.pocketvalo.app.ui.screen.store.BundleDetailScreen(
@@ -177,7 +173,6 @@ fun AppNavigation(
                     onBack    = { navController.popBackStack() }
                 )
             }
-
             composable(Screen.Match.route) { backStackEntry ->
                 val matchId = backStackEntry.arguments?.getString("matchId") ?: ""
                 MatchScreen(matchId, navController, playerViewModel)
@@ -202,7 +197,6 @@ fun AppNavigation(
                 AgentDetailScreen(agentId, navController, agentsViewModel)
             }
             composable(Screen.Weapons.route) {
-                val weaponsViewModel: WeaponsViewModel = viewModel()
                 WeaponsScreen(weaponsViewModel)
             }
         }
@@ -212,11 +206,11 @@ fun AppNavigation(
 @Composable
 fun BottomNavigationBar(navController: NavController, currentRoute: String?) {
     val items = listOf(
-        BottomNavItem(Screen.Agents.route,  Icons.Default.Person,        "Agents"),
-        BottomNavItem(Screen.Weapons.route, Icons.Default.Star,          "Weapons"),
-        BottomNavItem(Screen.Home.route,    Icons.Default.Home,          "Home"),
-        BottomNavItem(Screen.Store.route,   Icons.Default.ShoppingCart,  "Store"),
-        BottomNavItem(Screen.Account.route, Icons.Default.AccountCircle, "Account"),
+        BottomNavItem(Screen.Agents.route,  painterResource(R.drawable.ic_agents),        "Agents"),
+        BottomNavItem(Screen.Weapons.route, painterResource(R.drawable.ic_weapons),          "Collection"),
+        BottomNavItem(Screen.Home.route,    painterResource(R.drawable.ic_home),          "Home"),
+        BottomNavItem(Screen.Store.route,   painterResource(R.drawable.ic_store),  "Store"),
+        BottomNavItem(Screen.Account.route, painterResource(R.drawable.ic_account), "Account"),
     )
 
     NavigationBar(
@@ -233,7 +227,7 @@ fun BottomNavigationBar(navController: NavController, currentRoute: String?) {
                         restoreState    = true
                     }
                 },
-                icon   = { Icon(item.icon, contentDescription = item.label) },
+                icon   = { Icon(item.icon, contentDescription = item.label, modifier = Modifier.size(24.dp),) },
                 label  = { Text(item.label) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor   = Color(0xFFFF4655),

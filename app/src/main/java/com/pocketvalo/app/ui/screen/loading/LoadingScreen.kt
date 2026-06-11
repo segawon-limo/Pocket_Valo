@@ -23,6 +23,8 @@ import com.pocketvalo.app.R
 import com.pocketvalo.app.ui.navigation.Screen
 import com.pocketvalo.app.ui.viewmodel.LoadingViewModel
 import com.pocketvalo.app.ui.viewmodel.PlayerViewModel
+import com.pocketvalo.app.ui.viewmodel.StoreViewModel
+import com.pocketvalo.app.ui.viewmodel.WeaponsViewModel
 import kotlinx.coroutines.delay
 
 private val episodeImages = listOf(
@@ -42,6 +44,8 @@ private val episodeImages = listOf(
 fun LoadingScreen(
     navController: NavController,
     playerViewModel: PlayerViewModel,
+    storeViewModel: StoreViewModel,
+    weaponsViewModel: WeaponsViewModel,
     loadingViewModel: LoadingViewModel = viewModel()
 ) {
     val uiState by loadingViewModel.uiState.collectAsState()
@@ -64,11 +68,16 @@ fun LoadingScreen(
     )
 
     LaunchedEffect(Unit) {
-        loadingViewModel.startPrefetch(playerViewModel)
+        loadingViewModel.startPrefetch(playerViewModel, weaponsViewModel)
     }
 
     LaunchedEffect(uiState.isDone) {
         if (uiState.isDone) {
+            // Reset session expired state dan load store setelah login pertama
+            // StoreViewModel skip loadStore() di init kalau belum login —
+            // ini trigger-nya setelah token sudah tersedia
+            storeViewModel.resetSessionExpired()
+            storeViewModel.loadStore(forceRefresh = false)
             navController.navigate(Screen.Home.route) {
                 popUpTo(Screen.Loading.route) { inclusive = true }
             }

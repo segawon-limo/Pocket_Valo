@@ -244,7 +244,16 @@ class StoreRepository(
     // Step 1: fetch loadout dari PVP API → dapat PlayerTitleID
     // Step 2: resolve UUID ke nama title via valorant-api.com
 
-    suspend fun fetchPlayerTitle(): AuthResult<PlayerTitleInfo> {
+    // ── Player loadout — single endpoint, dipakai oleh fetchPlayerTitle & fetchEquippedSkins ──
+    // Menggabungkan dua fungsi yang sebelumnya hit endpoint yang sama dua kali.
+    // fetchPlayerTitle() dan fetchEquippedSkins() sekarang delegate ke sini.
+
+    data class PlayerLoadoutData(
+        val titleInfo: PlayerTitleInfo,
+        val equippedSkins: Map<String, String>
+    )
+
+    suspend fun fetchPlayerLoadout(): AuthResult<PlayerLoadoutData> {
         val tokenResult = authRepository.ensureValidToken()
         if (tokenResult.isFailure) {
             return AuthResult.Failure(
@@ -259,7 +268,7 @@ class StoreRepository(
 
         return withContext(Dispatchers.IO) {
             try {
-                // Step 1 — loadout dari PVP API
+                // Single hit ke playerloadout endpoint
                 val loadout = execute<PlayerLoadoutResponse>(
                     Request.Builder()
                         .url("https://pd.$region.a.pvp.net/personalization/v2/players/$puuid/playerloadout")
@@ -269,71 +278,46 @@ class StoreRepository(
                         .build()
                 )
 
-                val titleId     = loadout?.identity?.playerTitleId
+                // ── Build titleInfo ───────────────────────────────────────────
+                val titleId      = loadout?.identity?.playerTitleId
                 val playerCardId = loadout?.identity?.playerCardId
                 val accountLevel = loadout?.identity?.accountLevel
 
-                if (titleId == null) {
-                    return@withContext AuthResult.Success(
-                        PlayerTitleInfo(null, null, playerCardId, accountLevel)
-                    )
-                }
-
-                // Default title UUID — player belum set title
-                if (titleId == "00000000-0000-0000-0000-000000000000") {
-                    return@withContext AuthResult.Success(
+                val titleInfo = when {
+                    titleId == null -> PlayerTitleInfo(null, null, playerCardId, accountLevel)
+                    titleId == "00000000-0000-0000-0000-000000000000" ->
                         PlayerTitleInfo(null, titleId, playerCardId, accountLevel)
-                    )
+                    else -> {
+                        val titleResp = RetrofitClient.valorantApi.getPlayerTitle(titleId)
+                        val titleText = titleResp.body()?.data?.titleText
+                        PlayerTitleInfo(titleText, titleId, playerCardId, accountLevel)
+                    }
                 }
 
-                // Step 2 — resolve title UUID ke nama via valorant-api.com
-                val titleResp = RetrofitClient.valorantApi.getPlayerTitle(titleId)
-                val titleText = titleResp.body()?.data?.titleText
-
-                AuthResult.Success(PlayerTitleInfo(titleText, titleId, playerCardId, accountLevel))
-            } catch (e: Exception) {
-                AuthResult.Failure(e)
-            }
-        }
-    }
-
-    // ── Equipped skins ────────────────────────────────────────────────────────
-    // Returns Map<weaponUuid, equippedSkinUuid> dari loadout player
-
-    suspend fun fetchEquippedSkins(): AuthResult<Map<String, String>> {
-        val tokenResult = authRepository.ensureValidToken()
-        if (tokenResult.isFailure) {
-            return AuthResult.Failure(
-                tokenResult.exceptionOrNull() ?: Exception("Token refresh failed")
-            )
-        }
-
-        val puuid       = tokenStorage.puuid       ?: return AuthResult.Failure(Exception("Not logged in"))
-        val region      = tokenStorage.region      ?: return AuthResult.Failure(Exception("Region not set"))
-        val accessToken = tokenStorage.accessToken ?: return AuthResult.Failure(Exception("No access token"))
-        val entitlement = tokenStorage.entitlementToken ?: return AuthResult.Failure(Exception("No entitlement token"))
-
-        return withContext(Dispatchers.IO) {
-            try {
-                val loadout = execute<PlayerLoadoutResponse>(
-                    Request.Builder()
-                        .url("https://pd.$region.a.pvp.net/personalization/v2/players/$puuid/playerloadout")
-                        .get()
-                        .header("Authorization", "Bearer $accessToken")
-                        .header("X-Riot-Entitlements-JWT", entitlement)
-                        .build()
-                )
-
-                val skinMap = loadout?.guns
+                // ── Build equippedSkins ───────────────────────────────────────
+                val equippedSkins = loadout?.guns
                     ?.associate { it.weaponId to it.skinId }
                     ?: emptyMap()
 
-                AuthResult.Success(skinMap)
+                AuthResult.Success(PlayerLoadoutData(titleInfo, equippedSkins))
             } catch (e: Exception) {
                 AuthResult.Failure(e)
             }
         }
     }
+
+    // Delegate functions — backward compatible, delegate ke fetchPlayerLoadout()
+    suspend fun fetchPlayerTitle(): AuthResult<PlayerTitleInfo> =
+        when (val result = fetchPlayerLoadout()) {
+            is AuthResult.Success -> AuthResult.Success(result.data.titleInfo)
+            is AuthResult.Failure -> result
+        }
+
+    suspend fun fetchEquippedSkins(): AuthResult<Map<String, String>> =
+        when (val result = fetchPlayerLoadout()) {
+            is AuthResult.Success -> AuthResult.Success(result.data.equippedSkins)
+            is AuthResult.Failure -> result
+        }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

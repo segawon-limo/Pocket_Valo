@@ -43,18 +43,29 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         _uiState.value = _uiState.value.copy(username = tokenStorage.username)
-        loadStore()
+        // Hanya load jika sudah login — mencegah sessionExpired = true
+        // yang di-set sebelum login selesai dan tidak ter-reset setelahnya
+        if (tokenStorage.isLoggedIn) {
+            loadStore()
+        }
         observeAccountSwitch()
+    }
+
+    /**
+     * Dipanggil dari LoadingScreen setelah login + prefetch selesai.
+     * Clear stale sessionExpired state yang mungkin ter-set sebelum login.
+     */
+    fun resetSessionExpired() {
+        if (_uiState.value.sessionExpired) {
+            _uiState.value = _uiState.value.copy(sessionExpired = false)
+        }
     }
 
     private fun observeAccountSwitch() {
         viewModelScope.launch {
-            // Skip nilai awal (0) — hanya react ke switch yang benar-benar terjadi
             AccountSwitchNotifier.switchCount.collect { count ->
                 if (count > 0) {
-                    _uiState.value = StoreUiState(
-                        username = tokenStorage.username  // TokenStorage sudah updated saat ini
-                    )
+                    _uiState.value = StoreUiState(username = tokenStorage.username)
                     loadStore(forceRefresh = true)
                 }
             }
@@ -72,7 +83,7 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 is AuthResult.Failure -> {
-                    val errorMsg   = result.error.message ?: "Failed to load store"
+                    val errorMsg     = result.error.message ?: "Failed to load store"
                     val needsRelogin = errorMsg.contains("revoked") ||
                             errorMsg.contains("Not logged in")
                     if (needsRelogin) {

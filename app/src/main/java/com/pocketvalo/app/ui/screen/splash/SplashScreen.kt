@@ -61,12 +61,8 @@ fun SplashScreen(navController: NavController) {
     // - Belum login         → Welcome (untuk login)
     // - 1 akun tersimpan   → Loading langsung (no friction)
     // - 2+ akun tersimpan  → Welcome (untuk pilih akun)
-    val knownAccounts = multiStorage.getKnownPuuids()
-    val destination = when {
-        !tokenStorage.isLoggedIn          -> Screen.Welcome.route
-        knownAccounts.size > 1            -> Screen.Welcome.route
-        else                              -> Screen.Loading.route   // 1 akun, langsung masuk
-    }
+    // - Token ada tapi DB kosong (MIUI backup stale) → clear token → Welcome
+    var destination by remember { mutableStateOf(Screen.Welcome.route) }
 
     // Navigate after image loads
     LaunchedEffect(imageReady) {
@@ -78,6 +74,49 @@ fun SplashScreen(navController: NavController) {
     }
 
     LaunchedEffect(Unit) {
+        // ── Deteksi stale token dari MIUI backup ──────────────────────────────
+        // Jika token ada tapi Room DB tidak punya account → fresh install dengan
+        // sisa data dari MIUI backup → clear semua token supaya user login ulang
+        if (tokenStorage.isLoggedIn) {
+            val accountCount = withContext(Dispatchers.IO) { db.accountDao().getAccountCount() }
+            if (accountCount == 0) {
+                // DB kosong tapi token ada → stale state → clear semua
+                tokenStorage.clearAll()
+                multiStorage.clearAll()
+                destination = Screen.Welcome.route
+                // Skip sisa logic, langsung ke navigate
+            }
+        }
+
+        // ── Sync multiStorage ke Room DB ─────────────────────────────────────
+        // MIUI backup bisa persist multiStorage dengan akun yang tidak ada di DB.
+        // Hapus semua puuid dari multiStorage yang tidak punya entry di Room DB.
+        val dbPuuids = withContext(Dispatchers.IO) {
+            db.accountDao().getAllPuuids()
+        }.toSet()
+
+        multiStorage.getKnownPuuids().forEach { puuid ->
+            if (puuid !in dbPuuids) {
+                multiStorage.removeAccount(puuid)
+                android.util.Log.d("SplashScreen", "Removed stale account from multiStorage: $puuid")
+            }
+        }
+
+        // Kalau active puuid tidak ada di DB, clear active session
+        val activePuuid = multiStorage.activePuuid
+        if (activePuuid != null && activePuuid !in dbPuuids) {
+            tokenStorage.clearAll()
+            multiStorage.clearAll()
+        }
+
+        // Set destination berdasarkan state yang sudah bersih
+        val knownAccounts = multiStorage.getKnownPuuids()
+        destination = when {
+            !tokenStorage.isLoggedIn -> Screen.Welcome.route
+            knownAccounts.size > 1   -> Screen.Welcome.route
+            else                     -> Screen.Loading.route
+        }
+
         // Migrasi: pastikan akun aktif ada di Room DB (untuk user yang login sebelum fitur multi-account)
         val puuid    = tokenStorage.puuid
         val username = tokenStorage.username
@@ -134,10 +173,16 @@ fun SplashScreen(navController: NavController) {
             }
         } catch (_: Exception) { }
 
+        // Trigger imageReady fallback kalau image tidak load
+        if (!imageReady) {
+            imageReady = true
+        }
         // Fallback: navigate even if image fails or is too slow
         delay(4000L)
-        navController.navigate(destination) {
-            popUpTo(Screen.Splash.route) { inclusive = true }
+        if (navController.currentBackStackEntry?.destination?.route == Screen.Splash.route) {
+            navController.navigate(destination) {
+                popUpTo(Screen.Splash.route) { inclusive = true }
+            }
         }
     }
 

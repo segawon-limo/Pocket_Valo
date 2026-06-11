@@ -75,6 +75,12 @@ fun MatchScreen(
         playerViewModel.loadMatchDetail(matchId)
     }
 
+    // Tampilkan loading screen sampai semua data siap:
+    // 1. match data ada di uiState
+    // 2. map data sudah di-resolve
+    // 3. round detail sudah selesai load (tidak isLoadingDetail)
+    val isReady = match != null && mapData != null && !uiState.isLoadingDetail
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -83,6 +89,28 @@ fun MatchScreen(
         if (match == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(text = "Match not found", color = Color(0xFF9BA3AF))
+            }
+            return
+        }
+
+        // Full screen loading sampai map + round detail siap
+        if (!isReady) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color       = Color(0xFFFF4655),
+                        modifier    = Modifier.size(36.dp),
+                        strokeWidth = 3.dp
+                    )
+                    Text(
+                        text     = if (uiState.isLoadingDetail) "Loading round data..." else "Loading match...",
+                        color    = Color(0xFF9BA3AF),
+                        fontSize = 13.sp
+                    )
+                }
             }
             return
         }
@@ -354,8 +382,8 @@ fun RoundTimelineBar(
     // Heights in dp — explicit so layout is predictable
     val killLabelHeight = 12.dp
     val minBarHeight    = 16.dp
-    val maxBarHeight    = 56.dp   // increased for more visual difference
-    val roundNumHeight  = 12.dp
+    val maxBarHeight    = 56.dp
+    val roundNumHeight  = 16.dp   // naik dari 12 → 16 agar angka tidak terpotong
     val totalHeight     = killLabelHeight + maxBarHeight + roundNumHeight
     val barWidth        = 24.dp
     val barSpacing      = 4.dp
@@ -435,14 +463,17 @@ fun RoundTimelineBar(
 
                     // Round number below bar
                     Box(
-                        modifier = Modifier.height(roundNumHeight),
+                        modifier = Modifier
+                            .height(roundNumHeight)
+                            .fillMaxWidth(),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "${index + 1}",
-                            color = Color(0xFF9BA3AF),
-                            fontSize = 7.sp,
-                            textAlign = TextAlign.Center
+                            text      = "${index + 1}",
+                            color     = Color(0xFF9BA3AF),
+                            fontSize  = 8.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines  = 1
                         )
                     }
                 }

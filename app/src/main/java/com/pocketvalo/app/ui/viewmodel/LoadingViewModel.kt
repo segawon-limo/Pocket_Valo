@@ -1,6 +1,8 @@
 package com.pocketvalo.app.ui.viewmodel
 
 import android.app.Application
+import coil.ImageLoader
+import coil.request.ImageRequest
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.pocketvalo.app.data.local.AppDatabase
@@ -58,10 +60,10 @@ class LoadingViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
-    fun startPrefetch(playerViewModel: PlayerViewModel) {
+    fun startPrefetch(playerViewModel: PlayerViewModel, weaponsViewModel: WeaponsViewModel? = null) {
         viewModelScope.launch {
             try {
-                runPrefetch(playerViewModel)
+                runPrefetch(playerViewModel, weaponsViewModel)
                 // Semua step selesai — done
                 _uiState.value = _uiState.value.copy(
                     progress  = 1f,
@@ -82,21 +84,63 @@ class LoadingViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private suspend fun runPrefetch(playerViewModel: PlayerViewModel) {
+    private fun prefetchAgentImages(agents: List<com.pocketvalo.app.data.model.AgentData>) {
+        val imageLoader = ImageLoader(getApplication())
+        agents.forEach { agent ->
+            // Prefetch portrait utama
+            agent.displayIcon?.let { url ->
+                val request = ImageRequest.Builder(getApplication())
+                    .data(url)
+                    .memoryCacheKey(url)
+                    .diskCacheKey(url)
+                    .build()
+                imageLoader.enqueue(request)
+            }
+            // Prefetch full portrait (dipakai di AgentDetailScreen)
+            agent.fullPortrait?.let { url ->
+                val request = ImageRequest.Builder(getApplication())
+                    .data(url)
+                    .memoryCacheKey(url)
+                    .diskCacheKey(url)
+                    .build()
+                imageLoader.enqueue(request)
+            }
+            // Prefetch role icon
+            agent.role?.displayIcon?.let { url ->
+                val request = ImageRequest.Builder(getApplication())
+                    .data(url)
+                    .memoryCacheKey(url)
+                    .diskCacheKey(url)
+                    .build()
+                imageLoader.enqueue(request)
+            }
+        }
+    }
+
+    private suspend fun runPrefetch(playerViewModel: PlayerViewModel, weaponsViewModel: WeaponsViewModel? = null) {
         // ── Steps 0-3: public assets — jalankan parallel, tunggu semua selesai ──
         setStep(0)
         val mapsDeferred    = viewModelScope.async { assetsRepo.getMaps() }
         val agentsDeferred  = viewModelScope.async { assetsRepo.getAgents() }
         val weaponsDeferred = viewModelScope.async { assetsRepo.getWeapons() }
         val tiersDeferred   = viewModelScope.async { assetsRepo.getCompetitiveTiers() }
+        val versionDeferred = viewModelScope.async { assetsRepo.fetchClientVersion() }
 
         // Update label seiring masing-masing selesai
         viewModelScope.launch { mapsDeferred.await();    setStep(1) }
-        viewModelScope.launch { agentsDeferred.await();  setStep(2) }
+        viewModelScope.launch {
+            val agentsResult = agentsDeferred.await()
+            setStep(2)
+            // Prefetch gambar agent di background setelah data selesai
+            // Ini populate Coil disk cache sehingga AgentsScreen langsung tampil
+            if (agentsResult is com.pocketvalo.app.data.repository.Result.Success) {
+                prefetchAgentImages(agentsResult.data)
+            }
+        }
         viewModelScope.launch { weaponsDeferred.await(); setStep(3) }
 
         // Tunggu semua 4 selesai sebelum lanjut
-        awaitAll(mapsDeferred, agentsDeferred, weaponsDeferred, tiersDeferred)
+        awaitAll(mapsDeferred, agentsDeferred, weaponsDeferred, tiersDeferred, versionDeferred)
 
         // ── Step 4: Store + Night Market + Bundle prefetch ───────────────────
         setStep(4)
@@ -113,9 +157,18 @@ class LoadingViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
-        // ── Step 5: Player title + card ────────────────────────────────────────
+        // ── Step 5: Player title + card + equipped skins (single API call) ──────
         setStep(5)
-        storeRepo.fetchPlayerTitle()
+        when (val loadout = storeRepo.fetchPlayerLoadout()) {
+            is AuthResult.Success -> {
+                // Pass equipped skins ke WeaponsViewModel kalau tersedia
+                // — avoid double hit ke playerloadout endpoint
+                weaponsViewModel?.setEquippedSkins(loadout.data.equippedSkins)
+            }
+            is AuthResult.Failure -> {
+                android.util.Log.w("LoadingViewModel", "fetchPlayerLoadout failed: ${loadout.error.message}")
+            }
+        }
 
         // ── Step 6: MMR / rank ─────────────────────────────────────────────────
         setStep(6)

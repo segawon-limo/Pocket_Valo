@@ -18,4 +18,10 @@ interface AccountDao {
 
     @Query("DELETE FROM accounts WHERE riotId = :riotId")
     suspend fun deleteAccount(riotId: String)
+
+    @Query("SELECT COUNT(*) FROM accounts")
+    suspend fun getAccountCount(): Int
+
+    @Query("SELECT puuid FROM accounts")
+    suspend fun getAllPuuids(): List<String>
 }

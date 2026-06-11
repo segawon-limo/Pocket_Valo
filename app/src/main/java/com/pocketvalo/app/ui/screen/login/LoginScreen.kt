@@ -18,6 +18,7 @@ import com.pocketvalo.app.data.local.AppDatabase
 import com.pocketvalo.app.data.local.MultiAccountTokenStorage
 import com.pocketvalo.app.data.local.TokenStorage
 import com.pocketvalo.app.data.local.entity.AccountEntity
+import com.pocketvalo.app.data.repository.AccountSwitchNotifier
 import com.pocketvalo.app.data.repository.AuthResult
 import com.pocketvalo.app.data.repository.RiotAuthRepository
 import com.pocketvalo.app.ui.navigation.Screen
@@ -30,6 +31,7 @@ import kotlinx.coroutines.launch
 fun LoginScreen(
     navController: NavController,
     isAddAccount: Boolean = false,
+    onSwitchAccount: (() -> Unit)? = null,
     onSuccessRoute: String = Screen.Loading.route,
     popUpToRoute: String   = Screen.Login.route
 ) {
@@ -59,6 +61,7 @@ fun LoginScreen(
                             is AuthResult.Success -> {
                                 val accountData = result.data
                                 if (isAddAccount) {
+                                    // Simpan akun baru ke DB
                                     launch(Dispatchers.IO) {
                                         db.accountDao().upsertAccount(
                                             AccountEntity(
@@ -73,25 +76,12 @@ fun LoginScreen(
                                             )
                                         )
                                     }
-                                    if (previousActivePuuid != null) {
-                                        multiStorage.activePuuid = previousActivePuuid
-                                        tokenStorage.puuid    = previousActivePuuid
-                                        tokenStorage.region   = multiStorage.getRegion(previousActivePuuid)
-                                        tokenStorage.username = multiStorage.getUsername(previousActivePuuid)
-                                        multiStorage.getAccessToken(previousActivePuuid)?.let { at ->
-                                            tokenStorage.saveTokens(
-                                                accessToken      = at,
-                                                idToken          = multiStorage.getIdToken(previousActivePuuid) ?: "",
-                                                refreshToken     = multiStorage.getRefreshToken(previousActivePuuid) ?: "",
-                                                expiresInSeconds = ((multiStorage.getAccessExpiresAt(previousActivePuuid) - System.currentTimeMillis()) / 1000)
-                                                    .toInt().coerceAtLeast(0)
-                                            )
-                                        }
-                                        multiStorage.getEntitlementToken(previousActivePuuid)
-                                            ?.let { tokenStorage.entitlementToken = it }
-                                    }
-                                    navController.navigate(Screen.Account.route) {
-                                        popUpTo(Screen.AddAccount.route) { inclusive = true }
+                                    // Switch ke akun baru dan load datanya
+                                    multiStorage.activePuuid = accountData.puuid
+                                    AccountSwitchNotifier.notifySwitch()
+                                    onSwitchAccount?.invoke()
+                                    navController.navigate(Screen.Loading.route) {
+                                        popUpTo(Screen.Home.route) { inclusive = false }
                                     }
                                 } else {
                                     multiStorage.activePuuid = accountData.puuid
