@@ -2,49 +2,27 @@ package com.pocketvalo.app.ui.screen.match
 
 import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.background
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.border
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.horizontalScroll
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.layout.*
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.lazy.LazyColumn
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.lazy.items
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.rememberScrollState
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.foundation.shape.RoundedCornerShape
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.material.icons.Icons
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.material.icons.filled.ArrowBack
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.material3.*
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.runtime.*
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.Alignment
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.Modifier
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.draw.clip
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.graphics.Brush
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.graphics.Color
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.layout.ContentScale
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.text.font.FontWeight
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.text.style.TextAlign
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.text.style.TextOverflow
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.unit.dp
-import com.pocketvalo.app.util.formatMatchDateTime
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -55,7 +33,6 @@ import com.pocketvalo.app.ui.viewmodel.PlayerViewModel
 
 private val colorRedTeam  = Color(0xFF3D1A1A)
 private val colorBlueTeam = Color(0xFF174D3A)
-private val colorSelf     = Color(0xFF3D3000)
 
 @Composable
 fun MatchScreen(
@@ -70,15 +47,10 @@ fun MatchScreen(
     val currentName = uiState.accountData?.name ?: ""
     val currentTag  = uiState.accountData?.tag ?: ""
 
-    // Trigger round detail fetch
     LaunchedEffect(matchId) {
         playerViewModel.loadMatchDetail(matchId)
     }
 
-    // Tampilkan loading screen sampai semua data siap:
-    // 1. match data ada di uiState
-    // 2. map data sudah di-resolve
-    // 3. round detail sudah selesai load (tidak isLoadingDetail)
     val isReady = match != null && mapData != null && !uiState.isLoadingDetail
 
     Column(
@@ -93,7 +65,6 @@ fun MatchScreen(
             return
         }
 
-        // Full screen loading sampai map + round detail siap
         if (!isReady) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(
@@ -121,14 +92,14 @@ fun MatchScreen(
         val blueRounds = match.teams?.blue?.roundsWon ?: 0
 
         val currentPlayer = match.players?.allPlayers?.find {
-            it.name.equals(currentName, ignoreCase = true) && it.tag.equals(currentTag, ignoreCase = true)
+            it.name.equals(currentName, ignoreCase = true) &&
+                    it.tag.equals(currentTag, ignoreCase = true)
+        } ?: match.players?.allPlayers?.find {
+            it.name.equals(currentName, ignoreCase = true)
         }
+
         val playerOnRed = currentPlayer?.team?.equals("Red", ignoreCase = true) ?: false
         val playerWon   = if (playerOnRed) redWon else blueWon
-        val currentPuuid = currentPlayer?.let {
-            // puuid not in v3 matchlist — match by name#tag in round stats
-            null
-        }
 
         val allPlayers = match.players?.allPlayers
             ?.sortedByDescending { it.stats?.score ?: 0 }
@@ -136,7 +107,7 @@ fun MatchScreen(
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
 
-            // ── Map header ─────────────────────────────────────────────────
+            // ── Map header ──────────────────────────────────────────────────
             item {
                 Box(
                     modifier = Modifier
@@ -175,7 +146,7 @@ fun MatchScreen(
                         Text(match.metadata.map, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                         Text("${match.metadata.mode} · ${match.metadata.region.uppercase()}", color = Color(0xFFFF4655), fontSize = 13.sp)
                         Text(
-                            text  = if (match.metadata.gameStartEpoch > 0L)
+                            text = if (match.metadata.gameStartEpoch > 0L)
                                 formatMatchDateTime(match.metadata.gameStartEpoch)
                             else match.metadata.gameStartPatched,
                             color = Color(0xFF9BA3AF),
@@ -196,7 +167,6 @@ fun MatchScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(resultText, color = resultColor, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
-                    // Tim player selalu di kiri, lawan di kanan
                     val myRounds  = if (playerOnRed) redRounds  else blueRounds
                     val oppRounds = if (playerOnRed) blueRounds else redRounds
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -230,24 +200,28 @@ fun MatchScreen(
                 HorizontalDivider(color = Color(0xFF1A2332))
             }
 
-            // ── Unified player list ─────────────────────────────────────────
+            // ── Player list ─────────────────────────────────────────────────
             items(allPlayers) { player ->
                 val isSelf = player.name.equals(currentName, ignoreCase = true) &&
                         player.tag.equals(currentTag, ignoreCase = true)
-                val isRed  = player.team.equals("Red", ignoreCase = true)
+
+                // Warna berdasarkan apakah tim player menang atau kalah
+                val playerTeamWon = if (player.team.equals("Red", ignoreCase = true)) redWon else blueWon
 
                 val rowBg = when {
-                    isSelf -> colorSelf
-                    isRed  -> colorRedTeam
-                    else   -> colorBlueTeam
+                    isSelf && playerTeamWon  -> Color(0xFF2A7A55)  // self + menang = hijau terang
+                    isSelf && !playerTeamWon -> Color(0xFF6B2A2A)  // self + kalah = merah terang
+                    playerTeamWon            -> colorBlueTeam
+                    else                     -> colorRedTeam
                 }
                 val teamAccent = when {
-                    isSelf -> Color(0xFFFFD700)
-                    isRed  -> Color(0xFFFF6B6B)
-                    else   -> Color(0xFF1CCC5D)
+                    isSelf && playerTeamWon  -> Color(0xFF4ADE80)
+                    isSelf && !playerTeamWon -> Color(0xFFFF6B6B)
+                    playerTeamWon            -> Color(0xFF1CCC5D)
+                    else                     -> Color(0xFFFF6B6B)
                 }
 
-                PlayerRow(player = player, rowBg = rowBg, teamAccent = teamAccent)
+                PlayerRow(player = player, rowBg = rowBg, teamAccent = teamAccent, isSelf = isSelf)
             }
 
             // ── Round Detail section ────────────────────────────────────────
@@ -300,7 +274,6 @@ fun MatchScreen(
                 uiState.matchDetail?.rounds != null -> {
                     val rounds = uiState.matchDetail!!.rounds!!
 
-                    // Round timeline header
                     item {
                         RoundTimelineBar(
                             rounds = rounds,
@@ -310,20 +283,19 @@ fun MatchScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
-                    // Per-round stats for current player
                     item {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 12.dp, vertical = 4.dp),
                         ) {
-                            Text("RND", color = Color(0xFF9BA3AF), fontSize = 10.sp, modifier = Modifier.width(36.dp), textAlign = TextAlign.Center)
-                            Text("RESULT", color = Color(0xFF9BA3AF), fontSize = 10.sp, modifier = Modifier.width(60.dp), textAlign = TextAlign.Center)
-                            Text("K", color = Color(0xFF9BA3AF), fontSize = 10.sp, modifier = Modifier.width(24.dp), textAlign = TextAlign.Center)
-                            Text("DMG", color = Color(0xFF9BA3AF), fontSize = 10.sp, modifier = Modifier.width(44.dp), textAlign = TextAlign.Center)
-                            Text("WEAPON", color = Color(0xFF9BA3AF), fontSize = 10.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Start)
-                            Text("ARMOR", color = Color(0xFF9BA3AF), fontSize = 10.sp, modifier = Modifier.width(52.dp), textAlign = TextAlign.Center)
-                            Text("CR", color = Color(0xFF9BA3AF), fontSize = 10.sp, modifier = Modifier.width(36.dp), textAlign = TextAlign.Center)
+                            Text("RND",    color = Color(0xFF9BA3AF), fontSize = 10.sp, modifier = Modifier.width(36.dp),  textAlign = TextAlign.Center)
+                            Text("RESULT", color = Color(0xFF9BA3AF), fontSize = 10.sp, modifier = Modifier.width(60.dp),  textAlign = TextAlign.Center)
+                            Text("K",      color = Color(0xFF9BA3AF), fontSize = 10.sp, modifier = Modifier.width(24.dp),  textAlign = TextAlign.Center)
+                            Text("DMG",    color = Color(0xFF9BA3AF), fontSize = 10.sp, modifier = Modifier.width(44.dp),  textAlign = TextAlign.Center)
+                            Text("WEAPON", color = Color(0xFF9BA3AF), fontSize = 10.sp, modifier = Modifier.weight(1f),    textAlign = TextAlign.Start)
+                            Text("ARMOR",  color = Color(0xFF9BA3AF), fontSize = 10.sp, modifier = Modifier.width(52.dp),  textAlign = TextAlign.Center)
+                            Text("CR",     color = Color(0xFF9BA3AF), fontSize = 10.sp, modifier = Modifier.width(36.dp),  textAlign = TextAlign.Center)
                         }
                         HorizontalDivider(color = Color(0xFF1A2332))
                     }
@@ -336,13 +308,13 @@ fun MatchScreen(
                         val playerWonRound = round.winningTeam.equals(currentPlayer?.team ?: "Red", ignoreCase = true)
 
                         RoundRow(
-                            roundNumber = index + 1,
-                            round = round,
-                            playerWonRound = playerWonRound,
-                            kills = myStats?.kills ?: 0,
-                            damage = myStats?.totalDamage ?: 0,
-                            weaponName = myStats?.economy?.weapon?.name,
-                            armorName = myStats?.economy?.armor?.name,
+                            roundNumber      = index + 1,
+                            round            = round,
+                            playerWonRound   = playerWonRound,
+                            kills            = myStats?.kills ?: 0,
+                            damage           = myStats?.totalDamage ?: 0,
+                            weaponName       = myStats?.economy?.weapon?.name,
+                            armorName        = myStats?.economy?.armor?.name,
                             creditsRemaining = myStats?.economy?.remaining ?: 0
                         )
                     }
@@ -379,11 +351,10 @@ fun RoundTimelineBar(
     }
     val maxKills = killsPerRound.maxOrNull()?.coerceAtLeast(1) ?: 1
 
-    // Heights in dp — explicit so layout is predictable
     val killLabelHeight = 12.dp
     val minBarHeight    = 16.dp
     val maxBarHeight    = 56.dp
-    val roundNumHeight  = 16.dp   // naik dari 12 → 16 agar angka tidak terpotong
+    val roundNumHeight  = 16.dp
     val totalHeight     = killLabelHeight + maxBarHeight + roundNumHeight
     val barWidth        = 24.dp
     val barSpacing      = 4.dp
@@ -403,11 +374,9 @@ fun RoundTimelineBar(
                 val color = if (playerWon) Color(0xFF4ADE80) else Color(0xFFFF4655)
                 val kills = killsPerRound[index]
 
-                // Proportional bar height — explicit float ratio
-                val ratio = if (kills == 0) 0f else kills.toFloat() / maxKills
+                val ratio     = if (kills == 0) 0f else kills.toFloat() / maxKills
                 val barHeight = minBarHeight + (maxBarHeight - minBarHeight) * ratio
 
-                // Halftime separator
                 if (index == 12) {
                     Box(
                         modifier = Modifier
@@ -417,19 +386,15 @@ fun RoundTimelineBar(
                     )
                 }
 
-                // Fixed total height column — kill label + bar + round num
-                // Bar is bottom-aligned by giving top spacer = maxBarHeight - barHeight
                 Column(
                     modifier = Modifier
                         .width(barWidth)
                         .height(totalHeight),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Top spacer: pushes bar down so bars align at bottom
                     Spacer(modifier = Modifier.height(killLabelHeight))
                     Spacer(modifier = Modifier.height(maxBarHeight - barHeight))
 
-                    // Bar
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -438,7 +403,6 @@ fun RoundTimelineBar(
                             .background(color.copy(alpha = if (kills > 0) 1f else 0.55f)),
                         contentAlignment = Alignment.TopCenter
                     ) {
-                        // Kill count inside top of bar (only if bar is tall enough)
                         if (kills > 0 && barHeight >= 18.dp) {
                             Text(
                                 text = "$kills",
@@ -448,7 +412,6 @@ fun RoundTimelineBar(
                                 modifier = Modifier.padding(top = 2.dp)
                             )
                         }
-                        // Spike/defuse icon
                         val endIcon = when {
                             round.bombPlanted && !round.bombDefused -> "💥"
                             round.bombDefused -> "🛡"
@@ -461,7 +424,6 @@ fun RoundTimelineBar(
                         }
                     }
 
-                    // Round number below bar
                     Box(
                         modifier = Modifier
                             .height(roundNumHeight)
@@ -480,7 +442,6 @@ fun RoundTimelineBar(
             }
         }
 
-        // Legend
         Spacer(modifier = Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -515,7 +476,7 @@ fun RoundRow(
     armorName: String?,
     creditsRemaining: Int
 ) {
-    val bgColor = if (roundNumber % 2 == 0) Color(0xFF141E26) else Color(0xFF0F1923)
+    val bgColor     = if (roundNumber % 2 == 0) Color(0xFF141E26) else Color(0xFF0F1923)
     val resultColor = if (playerWonRound) Color(0xFF4ADE80) else Color(0xFFFF4655)
 
     val armorShort = when {
@@ -532,36 +493,9 @@ fun RoundRow(
             .padding(horizontal = 12.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Round number
-        Text(
-            text = "$roundNumber",
-            color = Color(0xFF9BA3AF),
-            fontSize = 12.sp,
-            modifier = Modifier.width(36.dp),
-            textAlign = TextAlign.Center
-        )
-
-        // Win/Loss
-        Text(
-            text = if (playerWonRound) "W" else "L",
-            color = resultColor,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.width(60.dp),
-            textAlign = TextAlign.Center
-        )
-
-        // Kills
-        Text(
-            text = if (kills > 0) "$kills" else "—",
-            color = if (kills > 0) Color.White else Color(0xFF9BA3AF),
-            fontSize = 12.sp,
-            fontWeight = if (kills > 0) FontWeight.SemiBold else FontWeight.Normal,
-            modifier = Modifier.width(24.dp),
-            textAlign = TextAlign.Center
-        )
-
-        // Damage
+        Text("$roundNumber",                            color = Color(0xFF9BA3AF), fontSize = 12.sp, modifier = Modifier.width(36.dp), textAlign = TextAlign.Center)
+        Text(if (playerWonRound) "W" else "L",         color = resultColor,       fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(60.dp), textAlign = TextAlign.Center)
+        Text(if (kills > 0) "$kills" else "—",         color = if (kills > 0) Color.White else Color(0xFF9BA3AF), fontSize = 12.sp, fontWeight = if (kills > 0) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.width(24.dp), textAlign = TextAlign.Center)
         Text(
             text = if (damage > 0) "$damage" else "—",
             color = when {
@@ -574,38 +508,9 @@ fun RoundRow(
             modifier = Modifier.width(44.dp),
             textAlign = TextAlign.Center
         )
-
-        // Weapon
-        Text(
-            text = weaponName ?: "—",
-            color = if (weaponName != null) Color.White else Color(0xFF9BA3AF),
-            fontSize = 11.sp,
-            modifier = Modifier.weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-
-        // Armor
-        Text(
-            text = armorShort,
-            color = when (armorShort) {
-                "Heavy" -> Color(0xFF60A5FA)
-                "Light" -> Color(0xFF9BA3AF)
-                else    -> Color(0xFF4B5563)
-            },
-            fontSize = 11.sp,
-            modifier = Modifier.width(52.dp),
-            textAlign = TextAlign.Center
-        )
-
-        // Credits remaining
-        Text(
-            text = if (creditsRemaining > 0) "$creditsRemaining" else "—",
-            color = Color(0xFFFFD700),
-            fontSize = 11.sp,
-            modifier = Modifier.width(36.dp),
-            textAlign = TextAlign.Center
-        )
+        Text(weaponName ?: "—",  color = if (weaponName != null) Color.White else Color(0xFF9BA3AF), fontSize = 11.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(armorShort,         color = when (armorShort) { "Heavy" -> Color(0xFF60A5FA); "Light" -> Color(0xFF9BA3AF); else -> Color(0xFF4B5563) }, fontSize = 11.sp, modifier = Modifier.width(52.dp), textAlign = TextAlign.Center)
+        Text(if (creditsRemaining > 0) "$creditsRemaining" else "—", color = Color(0xFFFFD700), fontSize = 11.sp, modifier = Modifier.width(36.dp), textAlign = TextAlign.Center)
     }
 }
 
@@ -613,7 +518,8 @@ fun RoundRow(
 fun PlayerRow(
     player: PlayerMatch,
     rowBg: Color,
-    teamAccent: Color
+    teamAccent: Color,
+    isSelf: Boolean = false
 ) {
     val acs = player.stats?.score ?: 0
 
@@ -623,55 +529,64 @@ fun PlayerRow(
             .padding(horizontal = 8.dp, vertical = 2.dp)
             .clip(RoundedCornerShape(6.dp))
             .background(rowBg)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .height(IntrinsicSize.Min),  // wajib agar fillMaxHeight pada sibling bekerja
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val agentUrl = player.assets?.agent?.small
-        if (agentUrl != null) {
-            AsyncImage(
-                model = agentUrl,
-                contentDescription = player.character,
-                modifier = Modifier.size(36.dp).clip(RoundedCornerShape(4.dp)),
-                contentScale = ContentScale.Crop
+        // Accent bar kuning — fillMaxHeight bekerja karena parent pakai IntrinsicSize.Min
+        if (isSelf) {
+            Spacer(
+                modifier = Modifier
+                    .width(4.dp)
+                    .fillMaxHeight()
+                    .background(Color(0xFFFFD700))
             )
-        } else {
-            Box(
-                modifier = Modifier.size(36.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFF374151)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(player.character.firstOrNull()?.toString() ?: "?", color = Color.White, fontSize = 14.sp)
+        }
+
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val agentUrl = player.assets?.agent?.small
+            if (agentUrl != null) {
+                AsyncImage(
+                    model = agentUrl,
+                    contentDescription = player.character,
+                    modifier = Modifier.size(36.dp).clip(RoundedCornerShape(4.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(
+                    modifier = Modifier.size(36.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFF374151)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(player.character.firstOrNull()?.toString() ?: "?", color = Color.White, fontSize = 14.sp)
+                }
             }
-        }
 
-        Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
-        Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "${player.name}#${player.tag}",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(text = player.character, color = teamAccent, fontSize = 11.sp)
+            }
+
+            Text("$acs", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(44.dp), textAlign = TextAlign.Center)
             Text(
-                text = "${player.name}#${player.tag}",
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                text = "${player.stats?.kills ?: 0} / ${player.stats?.deaths ?: 0} / ${player.stats?.assists ?: 0}",
+                color = Color(0xFF9BA3AF),
+                fontSize = 12.sp,
+                modifier = Modifier.width(80.dp),
+                textAlign = TextAlign.Center
             )
-            Text(text = player.character, color = teamAccent, fontSize = 11.sp)
         }
-
-        Text(
-            text = "$acs",
-            color = Color.White,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.width(44.dp),
-            textAlign = TextAlign.Center
-        )
-
-        Text(
-            text = "${player.stats?.kills ?: 0} / ${player.stats?.deaths ?: 0} / ${player.stats?.assists ?: 0}",
-            color = Color(0xFF9BA3AF),
-            fontSize = 12.sp,
-            modifier = Modifier.width(80.dp),
-            textAlign = TextAlign.Center
-        )
     }
 }

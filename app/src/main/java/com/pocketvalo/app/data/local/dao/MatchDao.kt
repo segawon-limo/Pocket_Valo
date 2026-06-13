@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface MatchDao {
 
-    @Query("SELECT * FROM match_history WHERE ownerRiotId = :riotId ORDER BY matchIndex ASC")
+    @Query("SELECT * FROM match_history WHERE ownerRiotId = :riotId ORDER BY gameStartEpoch DESC")
     fun getMatchHistory(riotId: String): Flow<List<MatchEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

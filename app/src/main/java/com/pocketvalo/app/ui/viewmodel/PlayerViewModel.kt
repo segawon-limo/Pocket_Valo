@@ -85,10 +85,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             repository.getCachedMatchHistory(riotId).collect { matches ->
                 val filtered = matches
-                    .take(15)   // ambil 15 match terakhir dulu
                     .filter { it.mode.equals("Competitive", ignoreCase = true) ||
                             it.mode.equals("Unrated", ignoreCase = true) }
-                    .take(10)   // lalu ambil 10 Competitive/Unrated
+                    .take(10)   // ambil 10 Competitive/Unrated terbaru
                 _uiState.value = _uiState.value.copy(matchHistory = filtered)
             }
         }
